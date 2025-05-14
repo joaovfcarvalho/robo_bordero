@@ -1,0 +1,16 @@
+requests==2.31.0
+beautifulsoup4==4.12.2
+python-dotenv==1.0.0
+google-genai==1.13.0
+pdfplumber==0.10.2
+structlog==23.2.0
+
+# Data validation schemas
+pydantic>=1.10
+
+# Dashboarding
+streamlit>=1.0
+pandas>=1.0
+
+# Testing framework
+pytest>=7.0.0
