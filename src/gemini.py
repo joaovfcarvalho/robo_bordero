@@ -8,6 +8,7 @@ import re
 from io import BytesIO
 import pdfplumber
 import time
+from pathlib import Path
 
 from .utils import (
     get_logger,
@@ -54,16 +55,31 @@ class PDFExtract(BaseModel):
     financial_data: FinancialData
     audience_statistics: AudienceStatistics
 
-def setup_client():
+def setup_client(api_key: Optional[str] = None): # Modified to accept api_key
     """
-    Sets up the Google Gen AI using the API key from environment variables.
+    Sets up the Google Gen AI using the provided API key or from config.json.
+
+    Args:
+        api_key (str, optional): The API key to use. If None, tries to load from config.json.
 
     Returns:
         genai.Client: Configured Gen AI client.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key: # If no key is directly passed, try to load from config
+        config = {}
+        config_file = Path("config.json") # Assuming Path is imported or defined
+        if config_file.exists():
+            try:
+                config = json.loads(config_file.read_text())
+            except Exception: # Handle potential error reading/parsing config
+                logger.error("Could not read or parse config.json to get API key.")
+                pass # Or raise a specific error
+        api_key = config.get("gemini_api_key")
+
     if not api_key:
-        raise ConfigurationError("GEMINI_API_KEY environment variable is not set.")
+        # This error should ideally be caught before calling analyze_pdf if the key is essential
+        # For now, it mirrors the original behavior of checking env var.
+        raise ConfigurationError("GEMINI_API_KEY is not set in config.json and was not provided.")
 
     return genai.Client(api_key=api_key)
 
@@ -100,23 +116,29 @@ def fallback_extract(pdf_content_bytes: bytes) -> dict:
     }
     return {"financial_data": financial_data}
 
-def analyze_pdf(pdf_content_bytes: bytes, custom_prompt: str = None) -> Dict[str, Any]:
+def analyze_pdf(pdf_content_bytes: bytes, gemini_api_key: str, custom_prompt: str = None) -> Dict[str, Any]: # Added gemini_api_key parameter
     """
     Analyzes PDF content using the Google Gen AI API with a specified prompt.
 
     Args:
         pdf_content_bytes (bytes): The content of the PDF file as bytes.
+        gemini_api_key (str): The Gemini API key.
         custom_prompt (str, optional): Custom prompt to guide the analysis. Defaults to a standard prompt.
 
     Returns:
         dict: Parsed JSON response from the Google Gen AI API or an error dictionary.
     """
-    fallback_enabled = os.getenv("ENABLE_FALLBACK", "true").lower() in ("1","true","yes")
-    retry_count = int(os.getenv("GEMINI_RETRY_COUNT", "3"))
-    backoff = float(os.getenv("GEMINI_BACKOFF_SECONDS", "1"))
+    # fallback_enabled = os.getenv("ENABLE_FALLBACK", "true").lower() in ("1","true","yes") # Removed
+    # retry_count = int(os.getenv("GEMINI_RETRY_COUNT", "3")) # Removed
+    # backoff = float(os.getenv("GEMINI_BACKOFF_SECONDS", "1")) # Removed
+
+    # These could be loaded from a config file or passed as parameters if they need to be configurable
+    fallback_enabled = True # Default or load from config
+    retry_count = 3 # Default or load from config
+    backoff = 1.0 # Default or load from config
 
     try:
-        client = setup_client()
+        client = setup_client(gemini_api_key) # Pass the key to setup_client
 
         if not pdf_content_bytes:
             logger.error("Empty PDF content received")

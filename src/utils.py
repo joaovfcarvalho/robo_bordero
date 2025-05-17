@@ -1,5 +1,5 @@
 import os
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import logging
 import logging.handlers
 import structlog
@@ -44,10 +44,6 @@ def add_app_context(_, __, event_dict):
     """Add application context to log records."""
     event_dict["app"] = "CBF Robot"
     return event_dict
-
-def load_env_variables():
-    """Load environment variables from the .env file."""
-    load_dotenv()
 
 def setup_logging():
     """

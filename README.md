@@ -7,7 +7,8 @@ The CBF Robot is a Python-based application designed to automate the collection 
 - **Web Scraping**: Automatically downloads PDF match reports (borderôs) from the CBF website for specified competitions and years.
 - **AI-Powered Data Extraction**: Uses the Google Gemini API to analyze the content of the PDF reports, extracting key information like match details, financial data, and audience statistics.
 - **CSV Storage**: Stores the extracted data in structured CSV files (`jogos_resumo.csv`, `receitas_detalhe.csv`, `despesas_detalhe.csv`) for easy access and analysis.
-- **GUI Interface**: Offers a simple Tkinter-based GUI to choose operations (download, analyze, or both).
+- **GUI Interface**: Offers a Tkinter-based GUI to choose operations (download, analyze, or both) and manage settings.
+- **Configuration Management**: Saves settings like API keys, directories, and competition lists in a `config.json` file.
 - **Logging**: Records operations and errors to `cbf_robot.log`.
 
 ## Project Structure
@@ -24,7 +25,7 @@ cbf-robot/
 │   └── __pycache__/      # Python cache files (auto-generated)
 ├── tests/
 │   └── test_functions.py # Placeholder for unit tests
-├── .env                  # Environment variables (user-created)
+├── config.json           # Configuration file (user-managed or auto-generated)
 ├── requirements.txt      # Project dependencies
 ├── README.md             # This file
 └── cbf_robot.log         # Log file (auto-generated)
@@ -43,49 +44,63 @@ cbf-robot/
     pip install -r requirements.txt
     ```
 
-3.  **Configure Environment Variables**:
-    Create a `.env` file in the root directory (`cbf-robot/`) and add the necessary environment variables. Example:
-    ```env
-    # Year to fetch borderôs for
-    YEAR=2025
-    # Competition codes (e.g., 142=Série A, 424=Copa do Brasil, 242=Série B)
-    COMPETITIONS=142,424,242
-    # Directory to save downloaded PDFs
-    PDF_DIR=pdfs
-    # Directory to save output CSVs
-    CSV_DIR=csv
-    # Your Google AI Studio API Key for Gemini
-    GEMINI_API_KEY=your_google_gemini_api_key_here
+3.  **Configure API Key and Settings**:
+    When you first run the application, or if the `config.json` file is missing or does not contain the Gemini API Key, you will be prompted to enter it via the GUI.
+    You can also manage settings (API Key, PDF/CSV directories, competitions) through the "Configurações" menu in the application. These settings are saved in `config.json` in the root directory.
+    
+    Example of `config.json`:
+    ```json
+    {
+      "year": 2025,
+      "competitions": [
+        "142",
+        "424",
+        "242"
+      ],
+      "pdf_dir": "pdfs",
+      "csv_dir": "csv",
+      "gemini_api_key": "your_google_gemini_api_key_here"
+    }
     ```
     *   You can obtain a `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/).
 
 4.  **Run the Application**:
     Execute the main script from the root directory using Python:
     ```bash
-    python src/main.py
+    python src/main.py 
+    ```
+    or if you made `run.py` executable:
+    ```bash
+    python run.py
     ```
     This will open the application's GUI window.
 
 ## Usage
 
-When you run the application (`python src/main.py`), a small window will appear with three buttons:
+When you run the application, a small window will appear. Use the "Configurações" menu to set your API key and other preferences if you haven't already.
 
-1.  **1. Apenas download de novos borderôs**: Clicks this to download PDF borderôs for the year and competitions specified in your `.env` file. It will only download files that are not already present in the `PDF_DIR`.
-2.  **2. Apenas análise de borderôs não processados**: Click this to analyze the PDFs currently in the `PDF_DIR` using the Gemini API. It checks the `jogos_resumo.csv` file and only processes PDFs whose IDs are not already listed, saving the results to the CSV files in `CSV_DIR`.
-3.  **3. Download e análise (execução completa)**: Click this to perform both steps sequentially: first download new PDFs, then analyze any unprocessed PDFs.
+The main window has four buttons for operations:
 
-A message box will appear indicating when the selected operation is complete.
+1.  **1. Apenas download de novos borderôs**: Downloads PDF borderôs for the year and competitions specified in your settings. It only downloads files not already present.
+2.  **2. Apenas análise de borderôs não processados**: Analyzes PDFs in the `PDF_DIR` using the Gemini API. It checks `jogos_resumo.csv` and processes only new PDFs.
+3.  **3. Download e análise (execução completa)**: Performs both download and analysis sequentially.
+4.  **4. Normalizar Nomes (CSV)**: Processes `jogos_resumo.csv` to create/update `jogos_resumo_clean.csv` by normalizing team, stadium, and competition names using lookups (which may also be refreshed using the Gemini API if new names are found).
+
+A message box will indicate when an operation is complete. Progress is shown in a bar at the bottom of the window.
 
 ## Output Files
 
 -   **`pdfs/`**: Contains the downloaded PDF borderô files.
--   **`csv/jogos_resumo.csv`**: Contains summary information for each processed match.
--   **`csv/receitas_detalhe.csv`**: Contains detailed revenue information for each processed match.
--   **`csv/despesas_detalhe.csv`**: Contains detailed expense information for each processed match.
--   **`cbf_robot.log`**: Contains logs of operations, including downloads, analysis attempts, successes, and errors.
+-   **`csv/jogos_resumo.csv`**: Summary information for each processed match.
+-   **`csv/receitas_detalhe.csv`**: Detailed revenue information.
+-   **`csv/despesas_detalhe.csv`**: Detailed expense information.
+-   **`csv/jogos_resumo_clean.csv`**: Cleaned version of `jogos_resumo.csv` with normalized names.
+-   **`lookups/`**: Contains JSON files used for normalizing names (e.g., `teams_lookup.json`).
+-   **`cbf_robot.log`**: Logs of operations, successes, and errors.
+-   **`config.json`**: Stores user settings.
 
 ## Security Note
-Your `GEMINI_API_KEY` is sensitive. Ensure the `.env` file is included in your `.gitignore` file to prevent accidentally committing it to version control.
+Your `GEMINI_API_KEY` is sensitive. The `config.json` file, where the API key is stored, should be added to your `.gitignore` file if you are in a shared repository and want to avoid committing your personal key. For personal use or if `config.json` contains only non-sensitive default settings, you might choose to keep it under version control.
 
 ## Contributing
 Contributions are welcome! Please submit a pull request or open an issue for any enhancements or bug fixes.
@@ -95,10 +110,10 @@ This project is licensed under the MIT License. (You may want to add a LICENSE f
 
 ## Future Improvements
 
-*   **Optimize PDF Downloading:** Currently, the script generates URLs for all possible match IDs for a given competition and year, even if many don't exist or have already been downloaded. A future optimization could involve:
-    *   Checking the `pdfs/` directory more efficiently before attempting downloads (though it already skips existing files).
-    *   Potentially finding a way to query an API or source that lists only *valid* match report URLs for a given competition/year, rather than iterating through all possibilities.
-    *   Alternatively, tracking the last successfully downloaded ID per competition/year and starting the scan from there on subsequent runs.
+*   **Optimize PDF Downloading:** 
+    *   More efficient checking of existing files.
+    *   Querying a source for valid match report URLs.
+    *   Tracking last downloaded ID per competition/year.
 
 ## Next Steps
 - Develop an interactive dashboard (e.g., using Dash, Streamlit, or Power BI) that reads the following cleaned output files:

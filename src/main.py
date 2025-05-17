@@ -10,7 +10,6 @@ from .gemini import analyze_pdf
 from .db import append_to_csv, read_csv
 from .utils import (
     setup_logging, 
-    load_env_variables as load_env_vars, 
     ensure_directory_exists,
     get_logger,
     handle_error,
@@ -198,7 +197,6 @@ def main():
     Ponto de entrada principal para executar as operações de download e análise.
     Agora com interface gráfica.
     """
-    load_env_vars()
 
     # Initialize main window before creating control variables
     root = tk.Tk()
@@ -206,47 +204,36 @@ def main():
 
     try:
         # Configurações - Get defaults, but year will be overridden by GUI
-        default_year = int(os.getenv("YEAR", datetime.date.today().year))
-        competitions = os.getenv("COMPETITIONS", "142,424,242").split(",")
-        pdf_dir = os.getenv("PDF_DIR", "pdfs")
-        csv_dir = os.getenv("CSV_DIR", "csv")
-        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        # default_year = int(os.getenv("YEAR", datetime.date.today().year)) # Removed
+        # competitions = os.getenv("COMPETITIONS", "142,424,242").split(",") # Removed
+        # pdf_dir = os.getenv("PDF_DIR", "pdfs") # Removed
+        # csv_dir = os.getenv("CSV_DIR", "csv") # Removed
+        # gemini_api_key = os.getenv("GEMINI_API_KEY") # Removed
 
-        if not gemini_api_key:
-            # Try to load from .env for local development if not already loaded by utils.load_env_vars()
-            # This provides a fallback if load_env_vars wasn't effective or called earlier for some reason.
-            from dotenv import load_dotenv
-            load_dotenv()
-            gemini_api_key = os.getenv("GEMINI_API_KEY")
-
-        if not gemini_api_key:
-            raise ConfigurationError(
-                "Chave da API Gemini não encontrada. "
-                "Configure a variável GEMINI_API_KEY no arquivo .env para desenvolvimento local "
-                "ou como um secret (GEMINI_API_KEY) nas configurações do repositório GitHub para execução em Actions."
-            )
-
-        ensure_directory_exists(pdf_dir)
-        ensure_directory_exists(csv_dir)
-        logger.info("Application started", 
-                   default_year=default_year, 
-                   competitions=competitions, 
-                   pdf_dir=pdf_dir, 
-                   csv_dir=csv_dir)
+        # Use hardcoded defaults or load from config.json for these
+        default_year = datetime.date.today().year
+        competitions = ["142", "424", "242"] # Default competitions
+        pdf_dir = "pdfs"
+        csv_dir = "csv"
+        gemini_api_key = "" # Will be loaded from config.json or prompted
 
         # Load persistent GUI settings if available
         config_file = Path("config.json")
         if config_file.exists():
             try:
                 stored = json.loads(config_file.read_text())
+                default_year = stored.get("year", default_year) # Load year from config
                 competitions = stored.get("competitions", competitions)
                 pdf_dir = stored.get("pdf_dir", pdf_dir)
                 csv_dir = stored.get("csv_dir", csv_dir)
                 gemini_api_key = stored.get("gemini_api_key", gemini_api_key)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to load config.json: {e}") # Log error
+                pass # Keep defaults if config loading fails
+
         # Settings storage and GUI variables
-        settings = {"competitions": competitions, "pdf_dir": pdf_dir, "csv_dir": csv_dir, "gemini_api_key": gemini_api_key}
+        settings = {"year": default_year, "competitions": competitions, "pdf_dir": pdf_dir, "csv_dir": csv_dir, "gemini_api_key": gemini_api_key}
+        year_var = tk.StringVar(value=str(settings["year"])) # Use loaded/default year
         competitions_var = tk.StringVar(value=",".join(settings["competitions"]))
         pdf_dir_var = tk.StringVar(value=settings["pdf_dir"])
         csv_dir_var = tk.StringVar(value=settings["csv_dir"])
@@ -266,6 +253,7 @@ def main():
             tk.Label(settings_win, text="Competições (IDs separados por vírgula):").grid(row=3, column=0, sticky='e')
             tk.Entry(settings_win, textvariable=competitions_var, width=30).grid(row=3, column=1)
             def save_settings():
+                settings["year"] = int(year_var.get()) # Save year
                 settings["competitions"] = competitions_var.get().split(",")
                 settings["pdf_dir"] = pdf_dir_var.get()
                 settings["csv_dir"] = csv_dir_var.get()
@@ -289,6 +277,34 @@ def main():
             progress_var.set(percentage)
             root.update_idletasks() # Ensure UI updates
 
+        def prompt_for_api_key_if_needed():
+            """Prompts the user for the API key if it's not already set."""
+            if not settings.get("gemini_api_key"):
+                # Use simpledialog to ask for the key
+                # This needs to be run in the main thread, so we might need to adjust
+                # how it's called or handle it before starting the thread if the key is missing.
+                # For now, let's assume it can be called and will block appropriately.
+                # The actual prompt should ideally happen before starting the thread or be managed carefully.
+                # A better approach might be to check before even calling threaded_operation for these choices.
+                # For this iteration, we'll try to prompt and if it fails, we exit the task.
+                key = tk.simpledialog.askstring("Chave da API Gemini", 
+                                                "Por favor, insira sua chave da API Gemini:", 
+                                                parent=root)
+                if key:
+                    settings["gemini_api_key"] = key
+                    api_key_var.set(key)
+                    # Persist the new key
+                    try:
+                        config_file.write_text(json.dumps(settings, indent=2))
+                    except Exception as e:
+                        logger.error("Failed to save API key to config.json", error=str(e))
+                    return True
+                else:
+                    messagebox.showwarning("Chave da API Necessária", 
+                                           "A chave da API Gemini é necessária para esta operação.")
+                    return False
+            return True # Key already exists
+
         def threaded_operation(choice):
             # If another operation is running, do nothing or show a message
             if current_thread_ref[0] and current_thread_ref[0].is_alive():
@@ -299,6 +315,23 @@ def main():
             cancel_event_ref[0] = cancel_event
             
             def task():
+                # Check for API key if needed by the operation
+                if choice in ["2", "3", "4"]: # Operations requiring API key
+                    if not settings.get("gemini_api_key"):
+                        # Prompt for API key in a way that doesn't block the UI thread improperly
+                        # This is tricky. For now, let's call a function that handles this.
+                        # The actual prompt should ideally happen before the thread starts or be managed carefully.
+                        # A better approach might be to check before even calling threaded_operation for these choices.
+                        # For this iteration, we'll try to prompt and if it fails, we exit the task.
+                        
+                        # We need to run the dialog in the main thread. 
+                        # A simple way is to schedule it and wait, but that's complex from a worker thread.
+                        # The prompt_for_api_key_if_needed was designed to be called from main thread.
+                        # Let's adjust: check key, if missing, show error and don't start.
+                        # This check should ideally be outside the thread, before starting it.
+                        # Re-evaluating: The prompt should be before this task() starts.
+                        pass # API key check will be done before starting the thread for relevant operations
+
                 for btn in operation_buttons:
                     btn.config(state='disabled')
                 cancel_button.config(state='normal') # Enable cancel button
@@ -369,11 +402,23 @@ def main():
         # Operation buttons
         btn1 = tk.Button(root, text="1. Apenas download de novos borderôs", command=lambda: threaded_operation("1"))
         btn1.pack(pady=5)
-        btn2 = tk.Button(root, text="2. Apenas análise de borderôs não processados", command=lambda: threaded_operation("2"))
+        
+        def operation_requires_api_key(op_choice):
+            return op_choice in ["2", "3", "4"]
+
+        def create_operation_lambda(op_choice):
+            def op_lambda():
+                if operation_requires_api_key(op_choice):
+                    if not prompt_for_api_key_if_needed():
+                        return # Don't proceed if API key is not provided
+                threaded_operation(op_choice)
+            return op_lambda
+
+        btn2 = tk.Button(root, text="2. Apenas análise de borderôs não processados", command=create_operation_lambda("2"))
         btn2.pack(pady=5)
-        btn3 = tk.Button(root, text="3. Download e análise (execução completa)", command=lambda: threaded_operation("3"))
+        btn3 = tk.Button(root, text="3. Download e análise (execução completa)", command=create_operation_lambda("3"))
         btn3.pack(pady=5)
-        btn4 = tk.Button(root, text="4. Normalizar Nomes (CSV)", command=lambda: threaded_operation("4"))
+        btn4 = tk.Button(root, text="4. Normalizar Nomes (CSV)", command=create_operation_lambda("4"))
         btn4.pack(pady=5)
         operation_buttons.extend([btn1, btn2, btn3, btn4])
 
