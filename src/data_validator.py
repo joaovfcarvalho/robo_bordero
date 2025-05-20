@@ -55,8 +55,8 @@ def validate_data_integrity(jogos_resumo_csv_path: Path, alerts_log_path: Path) 
         # Check for future game dates
         if 'data_jogo' in df.columns and pd.notna(row['data_jogo']):
             try:
-                # Try parsing the date in ISO or common formats
-                game_date = pd.to_datetime(row['data_jogo'], errors='coerce')
+                # Explicitly parse as day/month/year (Brazilian format)
+                game_date = pd.to_datetime(row['data_jogo'], format='%d/%m/%Y', errors='coerce')
                 if pd.notna(game_date) and game_date.date() > datetime.today().date():
                     alerts_found += 1
                     validator_logger.warning(f"ALERT: id_jogo_cbf='{game_id}', issue='Game date in the future', data_jogo='{row['data_jogo']}'")

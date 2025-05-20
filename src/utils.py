@@ -187,7 +187,10 @@ def generate_urls(year, competition_code):
     if competition_code == "142": # Série A - Rounds 1-38, Matches 0-9
         for round_number in range(1, 39): # Rounds 1 to 38
             for match_in_round in range(10): # Matches 0 to 9
-                match_id = f"{competition_code}{round_number}{match_in_round}"
+                if round_number == 1 and match_in_round == 0:
+                    match_id = f"{competition_code}{round_number}" # Handles the case like 1421b.pdf
+                else:
+                    match_id = f"{competition_code}{round_number}{match_in_round}"
                 url = f"{base_url}{match_id}b.pdf"
                 urls.append(url)
 

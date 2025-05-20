@@ -147,10 +147,12 @@ def analyze_pdf(pdf_content_bytes: bytes, gemini_api_key: str, custom_prompt: st
         # Define the prompt
         default_prompt = (
             "Extract the following information from the PDF as a JSON object: "
-            "1. Match details: home_team (str), away_team (str), match_date (str, YYYY-MM-DD), stadium (str), competition (str). "
-            "2. Financial data: gross_revenue (float), total_expenses (float), net_result (float), revenue_details (list of dicts with 'source', 'quantity' (int), 'price' (float), and 'amount' (float) keys), expense_details (list of dicts with 'category' and 'amount' keys). "
-            "3. Audience statistics: paid_attendance (int), non_paid_attendance (int), total_attendance (int)."
-            "Ensure all monetary values are floats and attendances/quantities are integers. If a value (like quantity or price) is not applicable or found, use null."
+            "1. Match details: home_team (str), away_team (str), match_date (str, DD/MM/YYYY), stadium (str), competition (str). "
+            "Dates in the document are always in the format DD/MM/YYYY (Brazilian standard). Parse all dates accordingly, never as MM/DD/YYYY or YYYY-MM-DD. "
+            "2. Financial data: gross_revenue (float), total_expenses (float), net_result (float). "
+            "3. Audience statistics: paid_attendance (int), non_paid_attendance (int), total_attendance (int). "
+            "Do NOT extract or return any revenue_details or expense_details. "
+            "Ensure all monetary values are floats and attendances are integers. If a value is not found, use null."
         )
         prompt = custom_prompt if custom_prompt else default_prompt
 

@@ -21,6 +21,7 @@ from .utils import (
 from .normalize import refresh_lookups, write_clean_csv
 import json
 from .validation import validate_summary, validate_revenue, validate_expense
+from .data_validator import validate_data_integrity # Added
 import threading
 from typing import Callable, Optional, List # Added
 
@@ -167,6 +168,23 @@ def run_operation(choice, year, competitions, pdf_dir, csv_dir, gemini_api_key,
             run_normalization(jogos_resumo_csv, lookup_path, jogos_resumo_clean_csv, gemini_api_key)
             if progress_callback: progress_callback(100)
             # Message is shown within run_normalization
+
+        elif choice == "5": # Validate Data Integrity
+            logger.info("Starting data integrity validation", **operation_context)
+            if progress_callback: progress_callback(0)
+            if cancel_event and cancel_event.is_set(): raise OperationCancelledError("Data validation cancelled.")
+            
+            alerts_log_file = Path("data_validation_alerts.log") # Log in the root directory
+            num_alerts = validate_data_integrity(jogos_resumo_csv, alerts_log_file)
+            
+            if progress_callback: progress_callback(100)
+            
+            if not (cancel_event and cancel_event.is_set()):
+                if num_alerts > 0:
+                    messagebox.showwarning("Validação Concluída", f"{num_alerts} alertas de integridade de dados encontrados. Verifique o arquivo '{alerts_log_file.name}' para detalhes.")
+                else:
+                    messagebox.showinfo("Validação Concluída", f"Nenhum alerta de integridade de dados encontrado. O arquivo '{alerts_log_file.name}' foi gerado.")
+            logger.info("Data integrity validation completed", alert_count=num_alerts, log_file=str(alerts_log_file))
 
         else:
             error_message = f"Seleção inválida: {choice}"
@@ -420,7 +438,10 @@ def main():
         btn3.pack(pady=5)
         btn4 = tk.Button(root, text="4. Normalizar Nomes (CSV)", command=create_operation_lambda("4"))
         btn4.pack(pady=5)
-        operation_buttons.extend([btn1, btn2, btn3, btn4])
+
+        btn5 = tk.Button(root, text="5. Validar Dados (jogos_resumo.csv)", command=create_operation_lambda("5"))
+        btn5.pack(pady=5)
+        operation_buttons.extend([btn1, btn2, btn3, btn4, btn5])
 
         # Cancel button
         def on_cancel():
@@ -510,7 +531,7 @@ def process_pdfs(pdf_dir: Path, jogos_resumo_csv: Path,
             with open(pdf_file_path_obj, 'rb') as f:
                 pdf_content_bytes = f.read()
 
-            response = analyze_pdf(pdf_content_bytes) # Assuming analyze_pdf is not IO-bound for cancellation checks inside it
+            response = analyze_pdf(pdf_content_bytes, gemini_api_key) # Pass gemini_api_key
             
             # Cache successful responses
             if not response.get("error"):
@@ -628,6 +649,86 @@ def process_pdfs(pdf_dir: Path, jogos_resumo_csv: Path,
             progress_callback(((idx + 1) / total_pdfs) * 100)
             
     return failed_pdf_ids # Return the list of failed PDF IDs
+
+def overwrite_row_in_csv(file_path, new_row, key_field):
+    """
+    Overwrites a row in a CSV file based on a key field. If the key exists, the row is replaced; otherwise, it is appended.
+    """
+    import csv
+    from pathlib import Path
+    file_path = Path(file_path)
+    rows = []
+    found = False
+    if file_path.exists():
+        with open(file_path, mode='r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            headers = reader.fieldnames
+            for row in reader:
+                if row.get(key_field) == new_row.get(key_field):
+                    rows.append(new_row)
+                    found = True
+                else:
+                    rows.append(row)
+    if not found:
+        # If not found, append
+        if not rows:
+            headers = list(new_row.keys())
+        rows.append(new_row)
+    # Write all rows back
+    with open(file_path, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(rows)
+
+def reprocess_all_pdfs(pdf_dir, jogos_resumo_csv, receitas_detalhe_csv, despesas_detalhe_csv, gemini_api_key):
+    """
+    Processes all PDFs and overwrites the corresponding rows in the CSVs.
+    Only updates jogos_resumo_csv (summary), ignores details.
+    """
+    from .validation import validate_summary
+    import datetime
+    from .gemini import analyze_pdf
+    from pathlib import Path
+    pdf_dir = Path(pdf_dir)
+    jogos_resumo_csv = Path(jogos_resumo_csv)
+    pdf_files = [f for f in pdf_dir.iterdir() if f.is_file() and f.suffix == ".pdf"]
+    for pdf_file_path_obj in pdf_files:
+        id_jogo_cbf = str(pdf_file_path_obj.stem)
+        try:
+            with open(pdf_file_path_obj, 'rb') as f:
+                pdf_content_bytes = f.read()
+            response = analyze_pdf(pdf_content_bytes, gemini_api_key)
+            match_details = response.get("match_details", {})
+            financial_data = response.get("financial_data", {})
+            audience_stats = response.get("audience_statistics", {})
+            resumo_jogo = {
+                "id_jogo_cbf": id_jogo_cbf,
+                "data_jogo": match_details.get("match_date"),
+                "time_mandante": match_details.get("home_team"),
+                "time_visitante": match_details.get("away_team"),
+                "estadio": match_details.get("stadium"),
+                "competicao": match_details.get("competition"),
+                "publico_pagante": audience_stats.get("paid_attendance"),
+                "publico_nao_pagante": audience_stats.get("non_paid_attendance"),
+                "publico_total": audience_stats.get("total_attendance"),
+                "receita_bruta_total": financial_data.get("gross_revenue"),
+                "despesa_total": financial_data.get("total_expenses"),
+                "resultado_liquido": financial_data.get("net_result"),
+                "caminho_pdf_local": str(pdf_file_path_obj),
+                "data_processamento": datetime.date.today().isoformat(),
+                "status": "Sucesso",
+                "log_erro": None
+            }
+            jogos_resumo_headers = [
+                "id_jogo_cbf", "data_jogo", "time_mandante", "time_visitante", "estadio", "competicao",
+                "publico_pagante", "publico_nao_pagante", "publico_total",
+                "receita_bruta_total", "despesa_total", "resultado_liquido",
+                "caminho_pdf_local", "data_processamento", "status", "log_erro"
+            ]
+            validated_summary = validate_summary([resumo_jogo])[0]
+            overwrite_row_in_csv(jogos_resumo_csv, validated_summary, "id_jogo_cbf")
+        except Exception as e:
+            print(f"Failed to process {pdf_file_path_obj}: {e}")
 
 if __name__ == "__main__":
     main()

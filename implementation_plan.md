@@ -1,86 +1,81 @@
-# CBF Robot Implementation Plan
+# CBF Robot Implementation Plan (May 20, 2025)
 
 ## Overview
-This document outlines the plan to implement the recommendations from the critical evaluation of the CBF Robot application. The implementation is divided into 4 phases with AI-assisted development.
 
-## Timeline
-- **Phase 1 (Essential Improvements):** 2-3 weeks
-- **Phase 2 (UX and Testing):** 2-3 weeks
-- **Phase 3 (Advanced Features):** 2-3 weeks
-- **Phase 4 (Optional):** 1-2 weeks if needed
-- **Total Duration:** 6-9 weeks
+This plan details actionable steps to address the critical evaluation findings and recommendations for the CBF Robot application. Each step is designed to be clear and actionable for an AI agent or developer.
 
-## Phase 1: Essential Improvements (DONE)
+---
 
-### 1. Enhance Error Handling (DONE)
-- Create centralized error handling in `utils.py`
-- Implement exception hierarchies
-- Add detailed logging with `structlog`
-- Connect errors to UI for user feedback
+## 1. Download Efficiency
 
+- Refactor `generate_urls` and `download_pdfs` to:
+  - Accept a list of valid match IDs (from a scraped schedule or CBF API, if available).
+  - If no API is available, implement a scraper to extract valid match IDs from the CBF website.
+  - Only generate/download URLs for valid matches.
 
-### 2. Add Fallback Mechanisms (DONE)
-- Implement rule-based PDF parser with `pdfplumber`
-- Create fallback extraction for Gemini API failures
-- Add configurable retry mechanisms
-- Implement local caching of processed PDFs
+## 2. Test Coverage
 
-### 3. Implement Data Validation (DONE)
-- Create validation module with data type rules
-- Add schema definitions using `pydantic`
-- Implement validation before CSV writing
-- Generate data quality reports
+- Add unit and integration tests for:
+  - `normalize.py` (name normalization logic).
+  - `validation.py` (data validation logic).
+  - `data_validator.py` (integrity checks).
+  - GUI logic (using `pytest-tkinter` or similar).
+- Add test fixtures with sample PDFs and CSVs.
+- Ensure all new features are covered by tests.
 
-## Phase 2: User Experience and Testing (2-3 weeks)
+## 3. Documentation
 
-### 4. Enhance the GUI (DONE)
-- Add progress bars for long operations
-- Implement real-time status updates
-- Create modal dialogs for error messages
-- Add settings panel for configuration
+- Add/expand docstrings for all public functions and classes.
+- Add usage examples where appropriate.
+- Update the README to:
+  - Document new features (e.g., validation alerts in GUI, database backend).
+  - Add a section on security and API key management.
+  - Add a section on extensibility (how to add new competitions).
 
-### 5. Implement Simple Parallel Processing (DONE)
-- Use `concurrent.futures` for parallel downloads (DONE)
-- Add concurrency configuration (DONE - `max_workers` parameter in `download_pdfs`)
-- Optimize memory usage during parallel operations (DONE - inherent in stream-based download)
+## 4. GUI Enhancements
 
-### 6. Expand Test Coverage (DONE)
-- Set up pytest framework (DONE)
-- Create unit tests for core functionality (DONE)
-- Implement integration tests (DONE - basic integration covered by testing function interactions with mocks)
-- Add test fixtures with sample PDFs (DONE - basic fixtures added)
+- Add a log viewer to the GUI for error and validation logs.
+- Display data validation alerts in the GUI after processing.
+- Add advanced filtering and search for processed matches.
 
-## Phase 3: Advanced Features (2-3 weeks)
+## 5. Database Backend
 
-### 7. Add Data Visualization Dashboard (DONE)
-- Create Streamlit web dashboard (DONE)
-- Implement basic visualizations (DONE)
-- Add filtering capabilities (DONE)
-- Create exportable reports
+- Add SQLite (via SQLAlchemy) as an optional backend.
+- Create models for matches, revenues, and expenses.
+- Add migration scripts to import existing CSV data into the database.
+- Update the application to optionally use the database for storage and queries.
 
-### 8. Implement Database Storage (4-5 days)
-- Set up SQLite database
-- Create schema for matches, revenues, expenses
-- Implement SQLAlchemy ORM models
-- Create CSV import/export mechanism
+## 6. Parallel PDF Analysis
 
-### 9. Add Internationalization (2-3 days)
-- Implement gettext framework
-- Extract user-facing strings
-- Create English translations
-- Add language selection to UI
+- Refactor PDF analysis in `process_pdfs` to use `concurrent.futures.ThreadPoolExecutor` or `ProcessPoolExecutor`.
+- Allow configuration of the number of parallel workers.
+- Ensure thread/process safety for CSV/database writes.
 
-## Phase 4 (Optional): Enhanced Download Efficiency (1-2 weeks)
+## 7. Validation Alerts in GUI
 
-### 10. Improve Download Efficiency (If Needed)
-- Analyze download patterns after other improvements
-- Implement smarter URL generation if still necessary
-- Consider match schedule database if beneficial
+- After processing, read the validation alerts log and display a summary in the GUI.
+- Provide a button to view detailed alerts.
 
-## Development Process
-- AI will draft code for each feature
-- Developer will review and provide feedback
-- Iterate until requirements are met
-- Each feature includes documentation and tests
+## 8. Secure API Key Storage
 
-## Created: May 8, 2025
+- Integrate with the OS keyring (e.g., `keyring` Python package) to store/retrieve the Gemini API key.
+- Remove the API key from plaintext in `config.json`.
+- Update documentation to reflect the new approach.
+
+## 9. Extensibility
+
+- Refactor competition and match format logic to be data-driven (e.g., via a JSON or YAML config).
+- Allow new competitions or formats to be added without code changes.
+
+---
+
+## Implementation Notes
+
+- Each step should include code, tests, and documentation updates.
+- All new features must be covered by automated tests.
+- Back up existing data before migrations.
+- Ensure backward compatibility where possible.
+
+---
+
+**Created: May 20, 2025**

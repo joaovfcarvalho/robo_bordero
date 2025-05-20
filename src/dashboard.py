@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import altair as alt # Added for custom chart sorting
 
 st.set_page_config(layout="wide") # Moved to the top
 
@@ -14,12 +15,29 @@ def load_data():
 
     # Ensure relevant columns are numeric, coercing errors to NaN
     numeric_cols = ['receita_bruta_total', 'publico_total', 'resultado_liquido']
+    # Add 'estadio' to the list of columns to check for existence, though it's not numeric
+    # We'll handle its specific processing later if needed.
     for col in numeric_cols:
-        data[col] = pd.to_numeric(data[col], errors='coerce')
+        if col in data.columns:
+            data[col] = pd.to_numeric(data[col], errors='coerce')
+        else:
+            # For essential numeric cols, we might want to raise an error or fill with 0
+            # For now, let's assume they exist or handle missing data downstream
+            pass
+
 
     # Calculate additional metrics
-    data['ticket_medio'] = data['receita_bruta_total'] / data['publico_total']
-    data['margem_liquida'] = data['resultado_liquido'] / data['receita_bruta_total']
+    if 'receita_bruta_total' in data.columns and 'publico_total' in data.columns:
+        # Ensure publico_total is not zero to avoid division by zero
+        data['ticket_medio'] = np.where(data['publico_total'] != 0, data['receita_bruta_total'] / data['publico_total'], 0)
+    else:
+        data['ticket_medio'] = 0
+        
+    if 'resultado_liquido' in data.columns and 'receita_bruta_total' in data.columns:
+        # Ensure receita_bruta_total is not zero to avoid division by zero
+        data['margem_liquida'] = np.where(data['receita_bruta_total'] != 0, data['resultado_liquido'] / data['receita_bruta_total'], 0)
+    else:
+        data['margem_liquida'] = 0
     
     # Replace inf values with NaN, then fill NaN with 0 (or an appropriate value)
     data.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -27,22 +45,37 @@ def load_data():
     data['margem_liquida'].fillna(0, inplace=True)
     
     # Create Portuguese day of the week
-    dias_semana_map = {
-        'Monday': 'Segunda-feira',
-        'Tuesday': 'Terça-feira',
-        'Wednesday': 'Quarta-feira',
-        'Thursday': 'Quinta-feira',
-        'Friday': 'Sexta-feira',
-        'Saturday': 'Sábado',
-        'Sunday': 'Domingo'
-    }
-    data['dia_semana_en'] = data['data_jogo'].dt.day_name()
-    data['dia_semana_pt'] = data['dia_semana_en'].map(dias_semana_map)
-    
-    # Define categorical order for Portuguese days of the week
-    dias_ordenados = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
-    data['dia_semana_pt'] = pd.Categorical(data['dia_semana_pt'], categories=dias_ordenados, ordered=True)
-    
+    if 'data_jogo' in data.columns and not data['data_jogo'].isnull().all():
+        dias_semana_map = {
+            'Monday': 'Segunda-feira',
+            'Tuesday': 'Terça-feira',
+            'Wednesday': 'Quarta-feira',
+            'Thursday': 'Quinta-feira',
+            'Friday': 'Sexta-feira',
+            'Saturday': 'Sábado',
+            'Sunday': 'Domingo'
+        }
+        data['dia_semana_en'] = data['data_jogo'].dt.day_name()
+        data['dia_semana_pt'] = data['dia_semana_en'].map(dias_semana_map)
+        
+        # Define categorical order for Portuguese days of the week
+        dias_ordenados = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
+        data['dia_semana_pt'] = pd.Categorical(data['dia_semana_pt'], categories=dias_ordenados, ordered=True)
+    else:
+        data['dia_semana_pt'] = pd.Series(dtype='category')
+
+
+    # Check for 'estadio' column and clean it (example: fill NaN with 'Desconhecido')
+    if 'estadio' not in data.columns:
+        # If 'estadio' column doesn't exist, create it and fill with a placeholder
+        # This allows the rest of the dashboard to function without breaking,
+        # and stadium-specific sections will indicate no data or use the placeholder.
+        data['estadio'] = 'Estádio Desconhecido'
+        st.sidebar.warning("Coluna 'estadio' não encontrada no arquivo CSV. Análises por estádio serão limitadas.")
+    else:
+        # If 'estadio' column exists, fill any NaN values
+        data['estadio'] = data['estadio'].fillna('Desconhecido')
+
     return data
 
 data = load_data()
@@ -53,70 +86,107 @@ st.title("CBF Robot - Análise de Jogos de Futebol")
 st.sidebar.header("Filtros")
 
 # Date range filter
-min_date = data['data_jogo'].min()
-max_date = data['data_jogo'].max()
+if 'data_jogo' in data.columns and not data['data_jogo'].isnull().all():
+    min_date = data['data_jogo'].min()
+    max_date = data['data_jogo'].max()
 
-if pd.isna(min_date) or pd.isna(max_date):
-    st.sidebar.warning("Datas de jogos não disponíveis para criar o filtro de período.")
-    # Set default dates if min_date or max_date is NaT
-    # This might happen if the 'data_jogo' column is all NaT after pd.to_datetime
-    from datetime import datetime
-    min_date = datetime(2020, 1, 1)
-    max_date = datetime.now()
-    selected_date_range = (min_date, max_date) # Default to a wide range
-else:
-    # Ensure min_date and max_date are Timestamps for the slider
-    min_date_ts = pd.Timestamp(min_date)
-    max_date_ts = pd.Timestamp(max_date)
-    
-    # Default to the last available year or the full range if only one year
-    default_start_date = max_date_ts.replace(month=1, day=1) if max_date_ts.year > min_date_ts.year else min_date_ts
-    default_end_date = max_date_ts
+    if pd.isna(min_date) or pd.isna(max_date):
+        st.sidebar.warning("Datas de jogos não disponíveis para criar o filtro de período.")
+        from datetime import datetime
+        min_date_dt = datetime(2020, 1, 1)
+        max_date_dt = datetime.now()
+    else:
+        min_date_dt = min_date.to_pydatetime()
+        max_date_dt = max_date.to_pydatetime()
+        
+    default_start_date = max_date_dt.replace(month=1, day=1) if max_date_dt.year > min_date_dt.year else min_date_dt
+    default_end_date = max_date_dt
 
     selected_date_range = st.sidebar.slider(
         "Período do Jogo",
-        min_value=min_date_ts.to_pydatetime(), # Convert to python datetime
-        max_value=max_date_ts.to_pydatetime(), # Convert to python datetime
-        value=(default_start_date.to_pydatetime(), default_end_date.to_pydatetime()), # Convert to python datetime
+        min_value=min_date_dt,
+        max_value=max_date_dt,
+        value=(default_start_date, default_end_date),
         format="DD/MM/YYYY"
     )
+    start_date_filter = pd.Timestamp(selected_date_range[0])
+    end_date_filter = pd.Timestamp(selected_date_range[1])
+    data_filtrada_periodo = data[
+        (data['data_jogo'] >= start_date_filter) & (data['data_jogo'] <= end_date_filter)
+    ].copy()
+else:
+    st.sidebar.warning("Coluna 'data_jogo' não encontrada ou vazia. Filtro de período desabilitado.")
+    data_filtrada_periodo = data.copy()
 
-# Filter data by selected date range first
-# Convert selected_date_range to Timestamp for comparison
-start_date_filter = pd.Timestamp(selected_date_range[0])
-end_date_filter = pd.Timestamp(selected_date_range[1])
 
-data_filtrada_periodo = data[
-    (data['data_jogo'] >= start_date_filter) & (data['data_jogo'] <= end_date_filter)
-].copy()
+# Competition filter
+all_competitions_label = "Todas as Competições"
+if 'competicao' in data_filtrada_periodo.columns:
+    competicao_options = sorted(data_filtrada_periodo["competicao"].dropna().unique())
+else:
+    competicao_options = []
+    st.sidebar.warning("Coluna 'competicao' não encontrada. Filtro de competição desabilitado.")
 
-
-competicao = st.sidebar.multiselect(
+competicao_selecionada_single = st.sidebar.selectbox(
     "Competição",
-    options=data_filtrada_periodo["competicao"].dropna().unique(),
-    default=data_filtrada_periodo["competicao"].dropna().unique()
+    options=[all_competitions_label] + competicao_options,
+    index=0
 )
 
-times_mandantes_options = sorted(data_filtrada_periodo["time_mandante"].dropna().unique())
-time_mandante_selecionado = st.sidebar.multiselect(
+# Home team filter
+all_teams_label = "Todos os Times"
+if 'time_mandante' in data_filtrada_periodo.columns:
+    times_mandantes_options = sorted(data_filtrada_periodo["time_mandante"].dropna().unique())
+else:
+    times_mandantes_options = []
+    st.sidebar.warning("Coluna 'time_mandante' não encontrada. Filtro de time mandante desabilitado.")
+
+time_mandante_selecionado_single = st.sidebar.selectbox(
     "Time Mandante",
-    options=times_mandantes_options,
-    default=times_mandantes_options
+    options=[all_teams_label] + times_mandantes_options,
+    index=0 
 )
 
-times_visitantes_options = sorted(data_filtrada_periodo["time_visitante"].dropna().unique())
-time_visitante_selecionado = st.sidebar.multiselect(
+# Away team filter
+if 'time_visitante' in data_filtrada_periodo.columns:
+    times_visitantes_options = sorted(data_filtrada_periodo["time_visitante"].dropna().unique())
+else:
+    times_visitantes_options = []
+    st.sidebar.warning("Coluna 'time_visitante' não encontrada. Filtro de time visitante desabilitado.")
+    
+time_visitante_selecionado_single = st.sidebar.selectbox(
     "Time Visitante",
-    options=times_visitantes_options,
-    default=times_visitantes_options
+    options=[all_teams_label] + times_visitantes_options,
+    index=0
 )
+
+# Stadium filter
+all_stadiums_label = "Todos os Estádios"
+if 'estadio' in data_filtrada_periodo.columns:
+    estadio_options = sorted(data_filtrada_periodo["estadio"].dropna().unique())
+else:
+    estadio_options = [] # Should be handled by load_data creating a default 'estadio' column
+    # Warning already given in load_data if 'estadio' was missing initially
+
+estadio_selecionado_single = st.sidebar.selectbox(
+    "Estádio",
+    options=[all_stadiums_label] + estadio_options,
+    index=0
+)
+
 
 # Apply filters
-data_dashboard = data_filtrada_periodo[
-    data_filtrada_periodo["competicao"].isin(competicao) &
-    data_filtrada_periodo["time_mandante"].isin(time_mandante_selecionado) &
-    data_filtrada_periodo["time_visitante"].isin(time_visitante_selecionado)
-].copy() # Use .copy() to avoid SettingWithCopyWarning
+data_dashboard = data_filtrada_periodo.copy()
+
+if 'competicao' in data_dashboard.columns and competicao_selecionada_single != all_competitions_label:
+    data_dashboard = data_dashboard[data_dashboard["competicao"] == competicao_selecionada_single]
+if 'time_mandante' in data_dashboard.columns and time_mandante_selecionado_single != all_teams_label:
+    data_dashboard = data_dashboard[data_dashboard["time_mandante"] == time_mandante_selecionado_single]
+if 'time_visitante' in data_dashboard.columns and time_visitante_selecionado_single != all_teams_label:
+    data_dashboard = data_dashboard[data_dashboard["time_visitante"] == time_visitante_selecionado_single]
+if 'estadio' in data_dashboard.columns and estadio_selecionado_single != all_stadiums_label:
+    data_dashboard = data_dashboard[data_dashboard["estadio"] == estadio_selecionado_single]
+
 
 if data_dashboard.empty:
     st.warning("Nenhum dado encontrado para os filtros selecionados.")
@@ -124,13 +194,13 @@ else:
     # --- GENERAL STATS ---
     st.header("Estatísticas Gerais do Período Filtrado")
     total_jogos = data_dashboard.shape[0]
-    total_publico = data_dashboard['publico_total'].sum()
-    total_receita = data_dashboard['receita_bruta_total'].sum()
-    # Calculate overall ticket_medio and margem_liquida carefully to avoid division by zero
-    overall_ticket_medio = total_receita / total_publico if total_publico > 0 else 0
-    overall_margem_liquida = data_dashboard['resultado_liquido'].sum() / total_receita if total_receita > 0 else 0
+    total_publico = data_dashboard['publico_total'].sum() if 'publico_total' in data_dashboard.columns else 0
+    total_receita = data_dashboard['receita_bruta_total'].sum() if 'receita_bruta_total' in data_dashboard.columns else 0
+    
+    overall_ticket_medio = (total_receita / total_publico) if total_publico > 0 else 0
+    overall_resultado_liquido = data_dashboard['resultado_liquido'].sum() if 'resultado_liquido' in data_dashboard.columns else 0
+    overall_margem_liquida = (overall_resultado_liquido / total_receita) if total_receita > 0 else 0
     total_receita_milhoes = total_receita / 1_000_000
-
 
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total de Jogos", f"{total_jogos:,}")
@@ -141,146 +211,451 @@ else:
 
     st.markdown("---")
 
+    # --- RESUMO POR COMPETIÇÃO ---
+    if 'competicao' in data_dashboard.columns:
+        st.header("Resumo por Competição")
+        resumo_competicao_df = data_dashboard.groupby('competicao', observed=False).agg(
+            total_jogos=('competicao', 'size'),
+            publico_total=('publico_total', 'sum'),
+            publico_medio=('publico_total', 'mean'),
+            receita_bruta_total=('receita_bruta_total', 'sum'),
+            # Ensure ticket_medio is treated as numeric before aggregation
+            ticket_medio=('ticket_medio', lambda x: pd.to_numeric(x, errors='coerce').mean()),
+            margem_liquida_media=('margem_liquida', lambda x: pd.to_numeric(x, errors='coerce').mean())
+        ).reset_index()
+
+        resumo_competicao_df.columns = [
+            'Competição', 'Total de Jogos', 'Público Total', 'Público Médio', 
+            'Receita Bruta Total', 'Ticket Médio', 'Margem Líquida Média'
+        ]
+        
+        # Formatting for display
+        formatted_resumo_competicao = resumo_competicao_df.style.format({
+            'Público Total': '{:,.0f}',
+            'Público Médio': '{:,.0f}',
+            'Receita Bruta Total': lambda x: f"R$ {x/1_000_000:,.2f}M" if (isinstance(x, (int, float)) and pd.notnull(x)) else '-',
+            'Ticket Médio': 'R$ {:,.2f}',
+            'Margem Líquida Média': '{:.2%}'
+        })
+        st.dataframe(formatted_resumo_competicao, use_container_width=True)
+        st.markdown("---")
+    else:
+        st.info("Dados de competição não disponíveis para o resumo.")
+
+
     # --- ATTENDANCE ANALYSIS ---
     st.header("Análise de Público")
-    col1_publico, col2_publico = st.columns(2)
+    # col1_publico, col2_publico = st.columns(2) # Original, col2 was histogram
+    col1_publico, col3_publico, col4_publico = st.columns(3) # Adjusted for 3 charts
 
     with col1_publico:
-        st.subheader("Público Médio por Dia da Semana")
-        # Group by Portuguese day name, calculate mean, then sort by the categorical order (day of week)
-        # or by value. Let's sort by value (mean attendance) for now.
-        dia_semana_publico = data_dashboard.groupby('dia_semana_pt', observed=False)['publico_total'].mean().sort_values(ascending=False)
-        st.bar_chart(dia_semana_publico)
-        st.caption("Mostra o público médio para cada dia da semana em que ocorreram jogos.")
-
-    with col2_publico:
-        st.subheader("Distribuição do Público Total")
-        # Drop NaN values before creating histogram to avoid errors
-        publico_total_valid = data_dashboard['publico_total'].dropna()
-        if not publico_total_valid.empty:
-            # Create bins for the histogram
-            try:
-                bins = pd.cut(publico_total_valid, bins=10) # Use 10 bins for better readability
-                publico_dist = publico_total_valid.groupby(bins, observed=False).size()
-                publico_dist.index = publico_dist.index.astype(str) # Convert IntervalIndex to string for display
-                st.bar_chart(publico_dist)
-                st.caption("Histograma mostrando a frequência de diferentes faixas de público total.")
-            except Exception as e:
-                st.info(f"Não foi possível gerar o histograma de público: {e}")
+        if 'dia_semana_pt' in data_dashboard.columns and not data_dashboard['dia_semana_pt'].isnull().all() and 'publico_total' in data_dashboard.columns:
+            st.subheader("Público Médio por Dia da Semana")
+            # Ensure publico_total is numeric for groupby operation
+            dia_semana_publico_series = data_dashboard.groupby('dia_semana_pt', observed=False)['publico_total'].mean()
+            if not dia_semana_publico_series.empty:
+                dia_semana_publico_df = dia_semana_publico_series.reset_index()
+                dia_semana_publico_df.columns = ['Dia da Semana', 'Público Médio']
+                
+                chart = alt.Chart(dia_semana_publico_df).mark_bar().encode(
+                    x=alt.X('Dia da Semana:N', sort=None),
+                    y=alt.Y('Público Médio:Q', title='Público Médio'),
+                    tooltip=['Dia da Semana', alt.Tooltip('Público Médio:Q', format=',.0f')]
+                ).properties(
+                    title='Público Médio por Dia da Semana'
+                )
+                st.altair_chart(chart, use_container_width=True)
+                st.caption("Público médio por dia da semana, ordenado por dia.")
+            else:
+                st.info("Não há dados suficientes para o gráfico de público por dia da semana.")
         else:
-            st.info("Não há dados de público suficientes para gerar o histograma.")
+            st.info("Dados de dia da semana não disponíveis.")
 
+    # REMOVED: Histogram (was col2_publico)
 
-    col3_publico, col4_publico = st.columns(2)
-    with col3_publico:
-        st.subheader("Público Médio por Time Mandante")
-        publico_medio_mandante = data_dashboard.groupby('time_mandante')['publico_total'].mean().sort_values(ascending=False).head(20) # Top 20
-        st.bar_chart(publico_medio_mandante)
-        st.caption("Top 20 times com maior público médio quando mandantes.")
+    with col3_publico: # Was col3_publico
+        if 'time_mandante' in data_dashboard.columns and 'publico_total' in data_dashboard.columns:
+            st.subheader("Público Médio (Mandante)")
+            # Ensure publico_total is numeric for groupby operation
+            publico_medio_mandante_series = data_dashboard.groupby('time_mandante')['publico_total'].mean().sort_values(ascending=False).head(15)
+            if not publico_medio_mandante_series.empty:
+                publico_medio_mandante_df = publico_medio_mandante_series.reset_index()
+                publico_medio_mandante_df.columns = ['Time Mandante', 'Público Médio']
+                chart = alt.Chart(publico_medio_mandante_df).mark_bar().encode(
+                    x=alt.X('Time Mandante:N', sort='-y', title='Time Mandante'),
+                    y=alt.Y('Público Médio:Q', title='Público Médio'),
+                    tooltip=['Time Mandante', alt.Tooltip('Público Médio:Q', format=',.0f')]
+                ).properties(
+                    title='Top 15 Público Médio (Mandante)'
+                )
+                st.altair_chart(chart, use_container_width=True)
+                st.caption("Top 15 times com maior público médio como mandantes.")
+            else:
+                st.info("Não há dados para o público médio por time mandante.")
+        else:
+            st.info("Dados de time mandante ou público não disponíveis.")
 
-    with col4_publico:
-        st.subheader("Público Médio por Time Visitante")
-        publico_medio_visitante = data_dashboard.groupby('time_visitante')['publico_total'].mean().sort_values(ascending=False).head(20) # Top 20
-        st.bar_chart(publico_medio_visitante)
-        st.caption("Top 20 times com maior público médio quando visitantes.")
+    with col4_publico: # Was col4_publico
+        if 'time_visitante' in data_dashboard.columns and 'publico_total' in data_dashboard.columns:
+            st.subheader("Público Médio (Visitante)")
+            # Ensure publico_total is numeric for groupby operation
+            publico_medio_visitante_series = data_dashboard.groupby('time_visitante')['publico_total'].mean().sort_values(ascending=False).head(15)
+            if not publico_medio_visitante_series.empty:
+                publico_medio_visitante_df = publico_medio_visitante_series.reset_index()
+                publico_medio_visitante_df.columns = ['Time Visitante', 'Público Médio']
+                chart = alt.Chart(publico_medio_visitante_df).mark_bar().encode(
+                    x=alt.X('Time Visitante:N', sort='-y', title='Time Visitante'),
+                    y=alt.Y('Público Médio:Q', title='Público Médio'),
+                    tooltip=['Time Visitante', alt.Tooltip('Público Médio:Q', format=',.0f')]
+                ).properties(
+                    title='Top 15 Público Médio (Visitante)'
+                )
+                st.altair_chart(chart, use_container_width=True)
+                st.caption("Top 15 times com maior público médio como visitantes.")
+            else:
+                st.info("Não há dados para o público médio por time visitante.")
+        else:
+            st.info("Dados de time visitante ou público não disponíveis.")
     
     st.markdown("---")
 
+    # --- ANÁLISE POR ESTÁDIO ---
+    if 'estadio' in data_dashboard.columns and data_dashboard['estadio'].nunique() > 0 and not (data_dashboard['estadio'].nunique() == 1 and data_dashboard['estadio'].iloc[0] in ['Estádio Desconhecido', 'Desconhecido']):
+        st.header("Análise por Estádio")
+        col1_estadio, col2_estadio = st.columns(2)
+
+        with col1_estadio:
+            if 'publico_total' in data_dashboard.columns:
+                st.subheader("Público Médio por Estádio")
+                # Ensure publico_total is numeric for groupby operation
+                publico_medio_estadio_series = data_dashboard.groupby('estadio')['publico_total'].mean().sort_values(ascending=False).head(15)
+                if not publico_medio_estadio_series.empty:
+                    publico_medio_estadio_df = publico_medio_estadio_series.reset_index()
+                    publico_medio_estadio_df.columns = ['Estádio', 'Público Médio']
+                    chart = alt.Chart(publico_medio_estadio_df).mark_bar().encode(
+                        x=alt.X('Estádio:N', sort='-y', title='Estádio'),
+                        y=alt.Y('Público Médio:Q', title='Público Médio'),
+                        tooltip=['Estádio', alt.Tooltip('Público Médio:Q', format=',.0f')]
+                    ).properties(
+                        title='Top 15 Público Médio por Estádio'
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+                    st.caption("Top 15 estádios com maior público médio.")
+                else:
+                    st.info("Não há dados suficientes para o público médio por estádio.")
+        
+        with col2_estadio:
+            if 'ticket_medio' in data_dashboard.columns and 'estadio' in data_dashboard.columns:
+                st.subheader("Ticket Médio por Estádio")
+                
+                # Filter for valid ticket data (not NaN and > 0) before grouping
+                valid_ticket_data_estadio = data_dashboard[
+                    data_dashboard['ticket_medio'].notna() & (data_dashboard['ticket_medio'] > 0)
+                ]
+
+                if not valid_ticket_data_estadio.empty:
+                    ticket_medio_estadio_series = valid_ticket_data_estadio.groupby('estadio')['ticket_medio'].mean().sort_values(ascending=False).head(15)
+                    # Check if the series is not empty AND not all NaN
+                    if not ticket_medio_estadio_series.empty and not ticket_medio_estadio_series.isnull().all():
+                        ticket_medio_estadio_df = ticket_medio_estadio_series.reset_index()
+                        ticket_medio_estadio_df.columns = ['Estádio', 'Ticket Médio']
+                        chart = alt.Chart(ticket_medio_estadio_df).mark_bar().encode(
+                            x=alt.X('Estádio:N', sort='-y', title='Estádio'),
+                            y=alt.Y('Ticket Médio:Q', title='Ticket Médio (R$)'),
+                            tooltip=['Estádio', alt.Tooltip('Ticket Médio:Q', format=',.2f')]
+                        ).properties(
+                            title='Top 15 Ticket Médio por Estádio'
+                        )
+                        st.altair_chart(chart, use_container_width=True)
+                        st.caption("Top 15 estádios com maior ticket médio.")
+                    else:
+                        st.info("Não há dados de ticket médio válidos (maiores que zero) para exibir no gráfico por estádio após o agrupamento.")
+                else:
+                    st.info("Não há dados de ticket médio válidos (maiores que zero) para calcular o ticket médio por estádio.")
+            else:
+                st.info("Dados de estádio ou ticket médio não disponíveis para o gráfico.")
+
+        st.subheader("Estatísticas por Estádio (Filtrado)")
+        # Ensure relevant columns are numeric before aggregation
+        agg_functions = {
+            'publico_total': lambda x: pd.to_numeric(x, errors='coerce').sum(),
+            'publico_medio': lambda x: pd.to_numeric(x, errors='coerce').mean(),
+            'receita_bruta_total': lambda x: pd.to_numeric(x, errors='coerce').sum(),
+            'ticket_medio': lambda x: pd.to_numeric(x, errors='coerce').mean()
+        }
+        # Filter out columns not present in data_dashboard to prevent errors
+        valid_agg_functions = {
+            col: func for col, func in agg_functions.items() 
+            if col.replace('_sum','').replace('_mean','') in data_dashboard.columns or col in data_dashboard.columns
+        }
+
+        # Dynamically build the aggregation dictionary
+        agg_dict = {}
+        if 'publico_total' in data_dashboard.columns:
+            agg_dict['publico_total_sum'] = pd.NamedAgg(column='publico_total', aggfunc='sum')
+            agg_dict['publico_total_mean'] = pd.NamedAgg(column='publico_total', aggfunc='mean')
+        if 'receita_bruta_total' in data_dashboard.columns:
+            agg_dict['receita_bruta_total_sum'] = pd.NamedAgg(column='receita_bruta_total', aggfunc='sum')
+        if 'ticket_medio' in data_dashboard.columns:
+            agg_dict['ticket_medio_mean'] = pd.NamedAgg(column='ticket_medio', aggfunc='mean')
+        agg_dict['total_jogos_count'] = pd.NamedAgg(column='estadio', aggfunc='size')
+
+
+        if agg_dict: # Proceed only if there's something to aggregate
+            estadio_stats_df = data_dashboard.groupby('estadio', observed=False).agg(**agg_dict).reset_index()
+            
+            # Rename columns to be more friendly
+            estadio_stats_df.rename(columns={
+                'publico_total_sum': 'Público Total',
+                'publico_total_mean': 'Público Médio',
+                'receita_bruta_total_sum': 'Receita Bruta Total',
+                'ticket_medio_mean': 'Ticket Médio',
+                'total_jogos_count': 'Total de Jogos',
+                'estadio': 'Estádio'
+            }, inplace=True)
+
+            # Reorder columns for display
+            display_cols_estadio = ['Estádio', 'Total de Jogos', 'Público Total', 'Público Médio', 'Receita Bruta Total', 'Ticket Médio']
+            # Filter for columns that actually exist in estadio_stats_df
+            existing_display_cols_estadio = [col for col in display_cols_estadio if col in estadio_stats_df.columns]
+            estadio_stats_df = estadio_stats_df[existing_display_cols_estadio]
+
+
+            if 'Público Médio' in estadio_stats_df.columns:
+                 estadio_stats_df = estadio_stats_df.sort_values(by='Público Médio', ascending=False)
+
+            # Formatting
+            formatters_estadio = {}
+            if 'Público Total' in estadio_stats_df.columns: formatters_estadio['Público Total'] = '{:,.0f}'
+            if 'Público Médio' in estadio_stats_df.columns: formatters_estadio['Público Médio'] = '{:,.0f}'
+            if 'Receita Bruta Total' in estadio_stats_df.columns: formatters_estadio['Receita Bruta Total'] = lambda x: f"R$ {x/1_000_000:,.2f}M" if x != 0 else "R$ 0.00M"
+            if 'Ticket Médio' in estadio_stats_df.columns: formatters_estadio['Ticket Médio'] = 'R$ {:,.2f}'
+            
+            if not estadio_stats_df.empty:
+                st.dataframe(estadio_stats_df.style.format(formatters_estadio, na_rep='-'), use_container_width=True)
+            else:
+                st.info("Nenhuma estatística de estádio para exibir com os filtros atuais.")
+        else:
+            st.info("Colunas necessárias para estatísticas de estádio não estão disponíveis.")
+        st.markdown("---")
+    elif 'estadio' in data_dashboard.columns and (data_dashboard['estadio'].nunique() == 1 and data_dashboard['estadio'].iloc[0] in ['Estádio Desconhecido', 'Desconhecido']):
+        st.info("Análise por estádio não disponível pois a coluna 'estadio' não foi encontrada ou contém apenas valores desconhecidos.")
+    else: # Should not be reached if 'estadio' column is always created
+        st.info("Dados de estádio não disponíveis para análise.")
+
+
     # --- FINANCIAL ANALYSIS ---
-    st.header("Análise Financeira")
+    st.header("Análise Financeira por Clube Mandante")
     col1_fin, col2_fin = st.columns(2)
 
     with col1_fin:
-        st.subheader("Ticket Médio por Clube (Mandante)")
-        ticket_medio_clube = data_dashboard.groupby('time_mandante')['ticket_medio'].mean().sort_values(ascending=False).head(20) # Top 20
-        st.bar_chart(ticket_medio_clube)
-        st.caption("Top 20 times com maior ticket médio quando mandantes.")
+        if 'time_mandante' in data_dashboard.columns and 'ticket_medio' in data_dashboard.columns:
+            st.subheader("Ticket Médio por Clube")
+            
+            # Filter for valid ticket data (not NaN and > 0) before grouping
+            valid_ticket_data_clube = data_dashboard[
+                data_dashboard['ticket_medio'].notna() & (data_dashboard['ticket_medio'] > 0)
+            ]
+
+            if not valid_ticket_data_clube.empty:
+                ticket_medio_clube_series = valid_ticket_data_clube.groupby('time_mandante')['ticket_medio'].mean().sort_values(ascending=False).head(15)
+                # Check if the series is not empty AND not all NaN
+                if not ticket_medio_clube_series.empty and not ticket_medio_clube_series.isnull().all():
+                    ticket_medio_clube_df = ticket_medio_clube_series.reset_index()
+                    ticket_medio_clube_df.columns = ['Time Mandante', 'Ticket Médio']
+                    chart = alt.Chart(ticket_medio_clube_df).mark_bar().encode(
+                        x=alt.X('Time Mandante:N', sort='-y', title='Time Mandante'),
+                        y=alt.Y('Ticket Médio:Q', title='Ticket Médio (R$)'),
+                        tooltip=['Time Mandante', alt.Tooltip('Ticket Médio:Q', format=',.2f')]
+                    ).properties(
+                        title='Top 15 Ticket Médio (Mandante)'
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+                    st.caption("Top 15 times com maior ticket médio como mandantes.")
+                else:
+                    st.info("Não há dados de ticket médio válidos (maiores que zero) para exibir no gráfico por clube mandante após o agrupamento.")
+            else:
+                st.info("Não há dados de ticket médio válidos (maiores que zero) para calcular o ticket médio por clube mandante.")
+        else:
+            st.info("Dados de time mandante ou ticket médio não disponíveis para o gráfico.")
 
     with col2_fin:
-        st.subheader("Margem Líquida Média por Clube (Mandante)")
-        margem_liquida_clube = data_dashboard.groupby('time_mandante')['margem_liquida'].mean().sort_values(ascending=False).head(20) # Top 20
-        st.bar_chart(margem_liquida_clube)
-        st.caption("Top 20 times com maior margem líquida média quando mandantes. Valores podem ser negativos.")
-
-    st.subheader("Relação Público Total vs. Ticket Médio")
-    # Ensure no NaN values in columns for scatter plot
-    scatter_data = data_dashboard[['publico_total', 'ticket_medio']].dropna()
-    if not scatter_data.empty:
-        st.scatter_chart(scatter_data, x='publico_total', y='ticket_medio', size='publico_total')
-        st.caption("Cada ponto representa um jogo. O tamanho do ponto pode indicar o público (opcional).")
-    else:
-        st.info("Não há dados suficientes para o gráfico de dispersão.")
-
+        if 'time_mandante' in data_dashboard.columns and 'margem_liquida' in data_dashboard.columns:
+            st.subheader("Margem Líquida Média por Clube")
+            # Ensure margem_liquida is numeric for groupby operation
+            margem_liquida_clube_series = data_dashboard.groupby('time_mandante')['margem_liquida'].mean().sort_values(ascending=False).head(15)
+            if not margem_liquida_clube_series.empty:
+                margem_liquida_clube_df = margem_liquida_clube_series.reset_index()
+                margem_liquida_clube_df.columns = ['Time Mandante', 'Margem Líquida Média']
+                chart = alt.Chart(margem_liquida_clube_df).mark_bar().encode(
+                    x=alt.X('Time Mandante:N', sort='-y', title='Time Mandante'),
+                    y=alt.Y('Margem Líquida Média:Q', axis=alt.Axis(format='.0%'), title='Margem Líquida Média'),
+                    tooltip=['Time Mandante', alt.Tooltip('Margem Líquida Média:Q', format='.2%')]
+                ).properties(
+                    title='Top 15 Margem Líquida Média (Mandante)'
+                )
+                st.altair_chart(chart, use_container_width=True)
+                st.caption("Top 15 times com maior margem líquida média como mandantes.")
+            else:
+                st.info("Não há dados para a margem líquida por clube mandante.")
+        else:
+            st.info("Dados de time mandante ou margem líquida não disponíveis.")
+    
+    # REMOVED: Bubble chart (Relação Público Total vs. Ticket Médio)
     st.markdown("---")
     
     # --- TOP 5 GAMES ---
-    st.header("Top 5 Jogos")
-    col1_top, col2_top = st.columns(2)
-    col3_top, col4_top = st.columns(2)
+    st.header("Top 5 Jogos por Diversas Métricas")
+    # ... (rest of Top 5 games section remains largely the same, ensure columns exist)
+    # Example for one, apply similar checks for others:
+    if 'publico_total' in data_dashboard.columns and 'data_jogo' in data_dashboard.columns and \
+       'time_mandante' in data_dashboard.columns and 'time_visitante' in data_dashboard.columns and \
+       'competicao' in data_dashboard.columns:
+        
+        col1_top, col2_top = st.columns(2)
+        col3_top, col4_top = st.columns(2)
 
-    with col1_top:
-        st.subheader("Por Maior Público Total")
-        top_publico = data_dashboard.nlargest(5, 'publico_total')[['data_jogo', 'time_mandante', 'time_visitante', 'publico_total', 'competicao']]
-        top_publico_display = top_publico.copy()
-        top_publico_display['data_jogo'] = top_publico_display['data_jogo'].dt.strftime('%d/%m/%y')
-        st.dataframe(top_publico_display.style.format({"publico_total": "{:,.0f}"}))
-    
-    with col2_top:
-        st.subheader("Por Maior Receita Bruta")
-        top_receita = data_dashboard.nlargest(5, 'receita_bruta_total')[['data_jogo', 'time_mandante', 'time_visitante', 'receita_bruta_total', 'competicao']]
-        top_receita_display = top_receita.copy()
-        top_receita_display['data_jogo'] = top_receita_display['data_jogo'].dt.strftime('%d/%m/%y')
-        st.dataframe(top_receita_display.style.format({"receita_bruta_total": "R$ {:,.2f}".replace('_', '.')}))
+        with col1_top:
+            st.subheader("Por Maior Público Total")
+            top_publico = data_dashboard.nlargest(5, 'publico_total')[
+                ['data_jogo', 'time_mandante', 'time_visitante', 'publico_total', 'competicao', 'estadio']
+            ]
+            top_publico_display = top_publico.copy()
+            top_publico_display['data_jogo'] = top_publico_display['data_jogo'].dt.strftime('%d/%m/%y')
+            top_publico_display['publico_total'] = pd.to_numeric(top_publico_display['publico_total'], errors='coerce')
+            st.dataframe(top_publico_display.style.format({"publico_total": "{:,.0f}"}, na_rep='-'), use_container_width=True)
+        
+        if 'receita_bruta_total' in data_dashboard.columns:
+            with col2_top:
+                st.subheader("Por Maior Receita Bruta")
+                # Ensure 'receita_bruta_total' is numeric before nlargest
+                data_dashboard['receita_bruta_total'] = pd.to_numeric(data_dashboard['receita_bruta_total'], errors='coerce')
+                top_receita_cols = ['data_jogo', 'time_mandante', 'time_visitante', 'receita_bruta_total', 'competicao', 'estadio']
+                # Filter for columns that actually exist
+                existing_top_receita_cols = [col for col in top_receita_cols if col in data_dashboard.columns]
+                
+                if 'receita_bruta_total' in existing_top_receita_cols: # Check if the primary sort column exists
+                    top_receita = data_dashboard.nlargest(5, 'receita_bruta_total')[existing_top_receita_cols]
+                    top_receita_display = top_receita.copy()
+                    if 'data_jogo' in top_receita_display.columns:
+                        top_receita_display['data_jogo'] = top_receita_display['data_jogo'].dt.strftime('%d/%m/%y')
+                    if 'receita_bruta_total' in top_receita_display.columns:
+                        top_receita_display['receita_bruta_total'] = pd.to_numeric(top_receita_display['receita_bruta_total'], errors='coerce')
+                    receita_formatters = {}
+                    if 'receita_bruta_total' in top_receita_display.columns:
+                        receita_formatters['receita_bruta_total'] = "R$ {:,.2f}"
+                    st.dataframe(top_receita_display.style.format(receita_formatters, na_rep='-'), use_container_width=True)
+                else:
+                    st.info("Coluna 'receita_bruta_total' não disponível para Top 5.")
+        else:
+            with col2_top: st.info("Dados de receita bruta não disponíveis para Top 5.")
 
-    with col3_top:
-        st.subheader("Por Maior Ticket Médio")
-        # Filter out games with zero public to avoid misleading high ticket_medio from zero division
-        top_ticket = data_dashboard[data_dashboard['publico_total'] > 0].nlargest(5, 'ticket_medio')[['data_jogo', 'time_mandante', 'time_visitante', 'ticket_medio', 'publico_total', 'competicao']]
-        top_ticket_display = top_ticket.copy()
-        top_ticket_display['data_jogo'] = top_ticket_display['data_jogo'].dt.strftime('%d/%m/%y')
-        st.dataframe(top_ticket_display.style.format({"ticket_medio": "R$ {:_.2f}".replace('_', '.'), "publico_total": "{:_.0f}".replace('_', '.')}))
+        if 'ticket_medio' in data_dashboard.columns and 'publico_total' in data_dashboard.columns:
+            with col3_top:
+                st.subheader("Por Maior Ticket Médio")
+                # Ensure 'ticket_medio' and 'publico_total' are numeric
+                data_dashboard['ticket_medio'] = pd.to_numeric(data_dashboard['ticket_medio'], errors='coerce')
+                data_dashboard['publico_total'] = pd.to_numeric(data_dashboard['publico_total'], errors='coerce')
 
-    with col4_top:
-        st.subheader("Por Maior Margem Líquida")
-        # Filter out games with zero revenue to avoid misleading high margem_liquida from zero division
-        top_margem = data_dashboard[data_dashboard['receita_bruta_total'] != 0].nlargest(5, 'margem_liquida')[['data_jogo', 'time_mandante', 'time_visitante', 'margem_liquida', 'receita_bruta_total', 'competicao']]
-        top_margem_display = top_margem.copy()
-        top_margem_display['data_jogo'] = top_margem_display['data_jogo'].dt.strftime('%d/%m/%y')
-        st.dataframe(top_margem_display.style.format({"margem_liquida": "{:.2%}", "receita_bruta_total": "R$ {:_.2f}".replace('_', '.')}))
+                top_ticket_cols = ['data_jogo', 'time_mandante', 'time_visitante', 'ticket_medio', 'publico_total', 'competicao', 'estadio']
+                existing_top_ticket_cols = [col for col in top_ticket_cols if col in data_dashboard.columns]
 
-    st.markdown("---")
+                if 'ticket_medio' in existing_top_ticket_cols and 'publico_total' in existing_top_ticket_cols:
+                    # Filter out games with zero or NaN public to avoid misleading high ticket_medio
+                    valid_ticket_data = data_dashboard[data_dashboard['publico_total'] > 0]
+                    if not valid_ticket_data.empty:
+                        top_ticket = valid_ticket_data.nlargest(5, 'ticket_medio')[existing_top_ticket_cols]
+                        top_ticket_display = top_ticket.copy()
+                        if 'data_jogo' in top_ticket_display.columns:
+                            top_ticket_display['data_jogo'] = top_ticket_display['data_jogo'].dt.strftime('%d/%m/%y')
+                        ticket_formatters = {}
+                        if 'ticket_medio' in top_ticket_display.columns:
+                            ticket_formatters['ticket_medio'] = "R$ {:,.2f}"
+                        if 'publico_total' in top_ticket_display.columns:
+                            ticket_formatters['publico_total'] = "{:,.0f}"
+                        st.dataframe(top_ticket_display.style.format(ticket_formatters, na_rep='-'), use_container_width=True)
+                    else:
+                        st.info("Não há dados válidos (com público > 0) para o Top 5 de Ticket Médio.")
+                else:
+                    st.info("Colunas 'ticket_medio' ou 'publico_total' não disponíveis para Top 5.")
+        else:
+            with col3_top: st.info("Dados de ticket médio ou público não disponíveis para Top 5.")
+
+        if 'margem_liquida' in data_dashboard.columns and 'receita_bruta_total' in data_dashboard.columns:
+            with col4_top:
+                st.subheader("Por Maior Margem Líquida")
+                # Ensure 'margem_liquida' and 'receita_bruta_total' are numeric
+                data_dashboard['margem_liquida'] = pd.to_numeric(data_dashboard['margem_liquida'], errors='coerce')
+                data_dashboard['receita_bruta_total'] = pd.to_numeric(data_dashboard['receita_bruta_total'], errors='coerce')
+
+                top_margem_cols = ['data_jogo', 'time_mandante', 'time_visitante', 'margem_liquida', 'receita_bruta_total', 'competicao', 'estadio']
+                existing_top_margem_cols = [col for col in top_margem_cols if col in data_dashboard.columns]
+
+                if 'margem_liquida' in existing_top_margem_cols and 'receita_bruta_total' in existing_top_margem_cols:
+                    # Filter out games with zero revenue to avoid misleading high margem_liquida
+                    valid_margem_data = data_dashboard[data_dashboard['receita_bruta_total'] != 0]
+                    if not valid_margem_data.empty:
+                        top_margem = valid_margem_data.nlargest(5, 'margem_liquida')[existing_top_margem_cols]
+                        top_margem_display = top_margem.copy()
+                        if 'data_jogo' in top_margem_display.columns:
+                            top_margem_display['data_jogo'] = top_margem_display['data_jogo'].dt.strftime('%d/%m/%y')
+                        margem_formatters = {}
+                        if 'margem_liquida' in top_margem_display.columns:
+                            margem_formatters['margem_liquida'] = "{:.2%}"
+                        if 'receita_bruta_total' in top_margem_display.columns:
+                            margem_formatters['receita_bruta_total'] = "R$ {:,.2f}"
+                        st.dataframe(top_margem_display.style.format(margem_formatters, na_rep='-'), use_container_width=True)
+                    else:
+                        st.info("Não há dados válidos (com receita != 0) para o Top 5 de Margem Líquida.")
+                else:
+                    st.info("Colunas 'margem_liquida' ou 'receita_bruta_total' não disponíveis para Top 5.")
+        else:
+            with col4_top: st.info("Dados de margem líquida ou receita não disponíveis para Top 5.")
+        st.markdown("---")
+    else:
+        st.info("Dados insuficientes para a seção 'Top 5 Jogos'.")
+
 
     # Display raw data
     st.header("Dados Brutos Filtrados")
     st.write(f"Exibindo {data_dashboard.shape[0]} jogos.")
     
-    # Prepare data for display, handling NaT in 'data_jogo' for formatting
-    data_display = data_dashboard.drop(columns=['dia_semana_en']).copy()
-    
-    # Formatters - using lambda for date to handle NaT
+    data_display_cols = [
+        'data_jogo', 'competicao', 'time_mandante', 'time_visitante', 'estadio', 
+        'publico_total', 'ticket_medio', 'receita_bruta_total', 'margem_liquida',
+        'publico_pagante', 'publico_nao_pagante', 'despesa_total', 'resultado_liquido'
+    ]
+    # Filter for columns that actually exist in data_dashboard
+    existing_display_cols = [col for col in data_display_cols if col in data_dashboard.columns]
+    data_display = data_dashboard[existing_display_cols].copy()
     formatters = {
         'data_jogo': lambda x: x.strftime('%d/%m/%y') if pd.notnull(x) else '',
-        'publico_pagante': '{:_.0f}'.replace('_', '.'),
-        'publico_nao_pagante': '{:_.0f}'.replace('_', '.'),
-        'publico_total': '{:_.0f}'.replace('_', '.'),
-        'receita_bruta_total': 'R$ {:_.2f}'.replace('_', '.'),
-        'despesa_total': 'R$ {:_.2f}'.replace('_', '.'),
-        'resultado_liquido': 'R$ {:_.2f}'.replace('_', '.'),
-        'ticket_medio': 'R$ {:_.2f}'.replace('_', '.'),
+        'publico_pagante': '{:,.0f}',
+        'publico_nao_pagante': '{:,.0f}',
+        'publico_total': '{:,.0f}',
+        'receita_bruta_total': 'R$ {:,.2f}',
+        'despesa_total': 'R$ {:,.2f}',
+        'resultado_liquido': 'R$ {:,.2f}',
+        'ticket_medio': 'R$ {:,.2f}',
         'margem_liquida': '{:.2%}'
     }
     
-    # Apply formatting. Using st.dataframe without .style if direct formatting is problematic,
-    # or ensure all columns in formatters exist and types are compatible.
-    # Forcing numeric columns to be float before applying float formatters can help.
-    for col, fmt in formatters.items():
+    # Filter formatters for columns that exist in data_display
+    active_formatters = {k: v for k, v in formatters.items() if k in data_display.columns}
+
+    for col, fmt in active_formatters.items():
         if col in data_display.columns:
-            if isinstance(fmt, str) and ('f' in fmt or '%' in fmt) and col != 'data_jogo': # Numeric formats
-                 data_display[col] = pd.to_numeric(data_display[col], errors='coerce') # Ensure numeric
-            # For date, it's handled by lambda. For others, style.format will apply.
+            if isinstance(fmt, str) and ('f' in fmt or '%' in fmt) and col != 'data_jogo': 
+                 data_display[col] = pd.to_numeric(data_display[col], errors='coerce')
 
     try:
-        st.dataframe(data_display.style.format(formatters, na_rep='-'))
+        if not data_display.empty:
+            st.dataframe(data_display.style.format(active_formatters, na_rep='-'), use_container_width=True)
+        else:
+            st.info("Nenhum dado bruto para exibir com os filtros atuais.")
     except Exception as e:
         st.error(f"Erro ao formatar a tabela de dados brutos: {e}")
-        st.dataframe(data_display) # Fallback to unformatted display
+        if not data_display.empty:
+            st.dataframe(data_display, use_container_width=True) # Fallback
+        else:
+            st.info("Nenhum dado bruto para exibir com os filtros atuais (fallback).")
