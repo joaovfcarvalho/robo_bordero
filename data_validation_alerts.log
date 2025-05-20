@@ -1,0 +1,14 @@
+2025-05-20 05:51:55,291 - WARNING - ALERT: id_jogo_cbf='42415b_2025', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-36730.58
+2025-05-20 05:51:55,293 - WARNING - ALERT: id_jogo_cbf='42426b_2025', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-64082.72
+2025-05-20 05:51:55,295 - WARNING - ALERT: id_jogo_cbf='42435b_2025', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-45544.0
+2025-05-20 05:51:55,321 - WARNING - ALERT: id_jogo_cbf='142332b_2024', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-205725.22
+2025-05-20 05:51:55,324 - WARNING - ALERT: id_jogo_cbf='142352b_2024', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-210510.7
+2025-05-20 05:51:55,326 - WARNING - ALERT: id_jogo_cbf='142362b_2024', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-192710.85
+2025-05-20 05:51:55,327 - WARNING - ALERT: id_jogo_cbf='142372b_2024', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-137826.19
+2025-05-20 05:51:55,348 - WARNING - ALERT: id_jogo_cbf='242235b_2024', issue='Margin > 100%', receita_bruta_total=275.725, resultado_liquido=50134.7, calculated_margin=18182.86%
+2025-05-20 05:51:55,351 - WARNING - ALERT: id_jogo_cbf='24225b_2024', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-63908.86
+2025-05-20 05:51:55,364 - WARNING - ALERT: id_jogo_cbf='242377b_2024', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-46241.6
+2025-05-20 05:51:55,367 - WARNING - ALERT: id_jogo_cbf='2425b_2024', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-59447.04
+2025-05-20 05:51:55,371 - WARNING - ALERT: id_jogo_cbf='2428b_2024', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-73080.81
+2025-05-20 05:51:55,379 - WARNING - ALERT: id_jogo_cbf='42452b_2024', issue='Non-zero result with zero revenue', receita_bruta_total=0.0, resultado_liquido=-46154.49
+2025-05-20 05:51:55,390 - INFO - Data validation scan complete. 13 alerts found. See details above.

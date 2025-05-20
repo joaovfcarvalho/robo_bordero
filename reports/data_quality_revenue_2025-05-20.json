@@ -1,0 +1,1 @@
+[{"type":"float_type","loc":["price"],"msg":"Input should be a valid number","input":null,"url":"https://errors.pydantic.dev/2.11/v/float_type"}]
