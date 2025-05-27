@@ -510,7 +510,7 @@ def process_pdfs(pdf_dir: Path, jogos_resumo_csv: Path,
             with open(pdf_file_path_obj, 'rb') as f:
                 pdf_content_bytes = f.read()
 
-            response = analyze_pdf(pdf_content_bytes) # Assuming analyze_pdf is not IO-bound for cancellation checks inside it
+            response = analyze_pdf(pdf_content_bytes, gemini_api_key) # Pass gemini_api_key as required argument
             
             # Cache successful responses
             if not response.get("error"):
