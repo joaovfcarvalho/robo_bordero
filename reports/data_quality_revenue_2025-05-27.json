@@ -1,0 +1,1 @@
+[{"type":"int_type","loc":["quantity"],"msg":"Input should be a valid integer","input":null,"url":"https://errors.pydantic.dev/2.11/v/int_type"}]
