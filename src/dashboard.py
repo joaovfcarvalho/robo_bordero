@@ -64,6 +64,16 @@ def load_data():
         # Convert to DataFrame
         data = pd.DataFrame(matches)
 
+        # Check if data is empty
+        if data.empty:
+            st.warning("⚠️ Nenhum dado encontrado no Supabase. O banco de dados pode estar vazio.")
+            st.info("""
+            **Como resolver:**
+            1. Execute o worker para processar borderôs e popular o banco de dados
+            2. Ou aguarde o processamento automático dos PDFs
+            """)
+            return pd.DataFrame()  # Return empty DataFrame
+
         # Map database columns to dashboard expected columns
         # Database uses: receita_total, saldo
         # Dashboard expects: receita_bruta_total, resultado_liquido
@@ -96,9 +106,13 @@ def load_data():
             2. Ou execute o worker para gerar dados locais
             """)
             return pd.DataFrame()  # Return empty DataFrame
-    
+
     # Explicitly convert 'data_jogo' to datetime, coercing errors to NaT
-    data['data_jogo'] = pd.to_datetime(data['data_jogo'], errors='coerce')
+    if 'data_jogo' in data.columns:
+        data['data_jogo'] = pd.to_datetime(data['data_jogo'], errors='coerce')
+    else:
+        st.warning("⚠️ Coluna 'data_jogo' não encontrada nos dados.")
+        data['data_jogo'] = pd.Series(dtype='datetime64[ns]')
 
     # Ensure relevant columns are numeric, coercing errors to NaN
     numeric_cols = ['receita_bruta_total', 'publico_total', 'resultado_liquido']
