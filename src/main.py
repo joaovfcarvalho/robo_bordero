@@ -5,11 +5,17 @@ import tkinter as tk
 import datetime
 from tkinter import messagebox, ttk, filedialog
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 from .scraper import download_pdfs
-from .gemini import analyze_pdf
+from .claude import analyze_pdf_with_claude as analyze_pdf  # Updated to use Claude
+from .gemini import analyze_pdf as analyze_pdf_gemini  # Keep for fallback
 from .db import append_to_csv, read_csv
 from .utils import (
-    setup_logging, 
+    setup_logging,
     ensure_directory_exists,
     get_logger,
     handle_error,
@@ -28,13 +34,26 @@ from typing import Callable, Optional, List # Added
 # Set up structured logging
 logger = setup_logging()
 
-def run_normalization(jogos_resumo_csv_path: Path, lookup_dir: Path, clean_csv_path: Path, gemini_api_key: str):
+# Get API key from environment (preferred) or will prompt user
+API_KEY = os.getenv('ANTHROPIC_API_KEY')
+if API_KEY:
+    logger.info("Claude API key loaded from environment")
+else:
+    logger.warning("No ANTHROPIC_API_KEY found in environment - will prompt user")
+
+def run_normalization(jogos_resumo_csv_path: Path, lookup_dir: Path, clean_csv_path: Path, api_key: str):
     """
     Runs the lookup refresh and clean CSV writing process.
+
+    Args:
+        jogos_resumo_csv_path: Path to the jogos_resumo.csv file
+        lookup_dir: Directory containing lookup JSON files
+        clean_csv_path: Path to output cleaned CSV
+        api_key: Anthropic API key for Claude
     """
     try:
         logger.info("Starting normalization process")
-        refresh_lookups(jogos_resumo_csv_path, lookup_dir, gemini_api_key)
+        refresh_lookups(jogos_resumo_csv_path, lookup_dir, api_key)
         write_clean_csv(jogos_resumo_csv_path, clean_csv_path, lookup_dir)
         messagebox.showinfo("Sucesso", "Normalização de nomes concluída. Arquivo 'jogos_resumo_clean.csv' criado/atualizado.")
         logger.info("Normalization process finished successfully")
@@ -45,7 +64,7 @@ def run_normalization(jogos_resumo_csv_path: Path, lookup_dir: Path, clean_csv_p
             ui_callback=messagebox.showerror
         )
 
-def run_operation(choice, year, competitions, pdf_dir, csv_dir, gemini_api_key,
+def run_operation(choice, year, competitions, pdf_dir, csv_dir, api_key,
                   progress_callback: Optional[Callable[[float], None]] = None,
                   cancel_event: Optional[threading.Event] = None):
     """
@@ -97,7 +116,7 @@ def run_operation(choice, year, competitions, pdf_dir, csv_dir, gemini_api_key,
 
         elif choice == "2": # Process PDFs
             logger.info("Starting PDF processing", **operation_context)
-            failed_pdfs = process_pdfs(pdf_path, jogos_resumo_csv, receitas_detalhe_csv, despesas_detalhe_csv, gemini_api_key, progress_callback=progress_callback, cancel_event=cancel_event)
+            failed_pdfs = process_pdfs(pdf_path, jogos_resumo_csv, receitas_detalhe_csv, despesas_detalhe_csv, api_key, progress_callback=progress_callback, cancel_event=cancel_event)
             
             if not (cancel_event and cancel_event.is_set()):
                 if failed_pdfs:
@@ -147,7 +166,7 @@ def run_operation(choice, year, competitions, pdf_dir, csv_dir, gemini_api_key,
                     overall_progress = (progress_of_completed_tasks + progress_of_this_task_scaled) * 100
                     progress_callback(overall_progress)
             
-            failed_pdfs = process_pdfs(pdf_path, jogos_resumo_csv, receitas_detalhe_csv, despesas_detalhe_csv, gemini_api_key, progress_callback=processing_phase_sub_progress, cancel_event=cancel_event)
+            failed_pdfs = process_pdfs(pdf_path, jogos_resumo_csv, receitas_detalhe_csv, despesas_detalhe_csv, api_key, progress_callback=processing_phase_sub_progress, cancel_event=cancel_event)
             current_task_idx +=1 
             
             if progress_callback and not (cancel_event and cancel_event.is_set()): # Ensure 100% at the end
@@ -165,7 +184,7 @@ def run_operation(choice, year, competitions, pdf_dir, csv_dir, gemini_api_key,
             # Normalization is typically fast, but we can set progress to 0 and 100
             if progress_callback: progress_callback(0)
             if cancel_event and cancel_event.is_set(): raise OperationCancelledError("Normalization cancelled.")
-            run_normalization(jogos_resumo_csv, lookup_path, jogos_resumo_clean_csv, gemini_api_key)
+            run_normalization(jogos_resumo_csv, lookup_path, jogos_resumo_clean_csv, api_key)
             if progress_callback: progress_callback(100)
             # Message is shown within run_normalization
 
@@ -233,7 +252,9 @@ def main():
         competitions = ["142", "424", "242"] # Default competitions
         pdf_dir = "pdfs"
         csv_dir = "csv"
-        gemini_api_key = "" # Will be loaded from config.json or prompted
+
+        # API key priority: 1) Environment variable, 2) config.json, 3) prompt user
+        api_key = API_KEY or ""  # Use global API_KEY from .env if available
 
         # Load persistent GUI settings if available
         config_file = Path("config.json")
@@ -244,24 +265,31 @@ def main():
                 competitions = stored.get("competitions", competitions)
                 pdf_dir = stored.get("pdf_dir", pdf_dir)
                 csv_dir = stored.get("csv_dir", csv_dir)
-                gemini_api_key = stored.get("gemini_api_key", gemini_api_key)
+                # Only use config.json API key if not in environment
+                if not api_key:
+                    api_key = stored.get("api_key") or stored.get("gemini_api_key", "")  # Support legacy key name
             except Exception as e:
                 logger.warning(f"Failed to load config.json: {e}") # Log error
                 pass # Keep defaults if config loading fails
 
         # Settings storage and GUI variables
-        settings = {"year": default_year, "competitions": competitions, "pdf_dir": pdf_dir, "csv_dir": csv_dir, "gemini_api_key": gemini_api_key}
+        settings = {"year": default_year, "competitions": competitions, "pdf_dir": pdf_dir, "csv_dir": csv_dir, "api_key": api_key}
         year_var = tk.StringVar(value=str(settings["year"])) # Use loaded/default year
         competitions_var = tk.StringVar(value=",".join(settings["competitions"]))
         pdf_dir_var = tk.StringVar(value=settings["pdf_dir"])
         csv_dir_var = tk.StringVar(value=settings["csv_dir"])
-        api_key_var = tk.StringVar(value=settings["gemini_api_key"])
+        api_key_var = tk.StringVar(value=settings["api_key"])
 
         def open_settings():
             settings_win = tk.Toplevel(root)
             settings_win.title("Configurações")
-            tk.Label(settings_win, text="Chave API Gemini:").grid(row=0, column=0, sticky='e')
-            tk.Entry(settings_win, textvariable=api_key_var, width=30).grid(row=0, column=1)
+
+            # API Key with note about .env
+            tk.Label(settings_win, text="Chave API Claude:").grid(row=0, column=0, sticky='e')
+            tk.Entry(settings_win, textvariable=api_key_var, width=30, show="*").grid(row=0, column=1)  # Hide key with asterisks
+            if API_KEY:
+                tk.Label(settings_win, text="(Carregada do .env)", fg="green", font=("Arial", 8)).grid(row=0, column=2, sticky='w')
+
             tk.Label(settings_win, text="Diretório PDFs:").grid(row=1, column=0, sticky='e')
             tk.Entry(settings_win, textvariable=pdf_dir_var, width=30).grid(row=1, column=1)
             tk.Button(settings_win, text="Browse...", command=lambda: pdf_dir_var.set(filedialog.askdirectory())).grid(row=1, column=2)
@@ -275,13 +303,13 @@ def main():
                 settings["competitions"] = competitions_var.get().split(",")
                 settings["pdf_dir"] = pdf_dir_var.get()
                 settings["csv_dir"] = csv_dir_var.get()
-                settings["gemini_api_key"] = api_key_var.get()
-                # Persist settings
+                settings["api_key"] = api_key_var.get()
+                # Persist settings (but recommend using .env instead)
                 try:
                     config_file.write_text(json.dumps(settings, indent=2))
                 except Exception:
                     pass
-                messagebox.showinfo("Configurações", "Configurações salvas com sucesso.")
+                messagebox.showinfo("Configurações", "Configurações salvas. Para melhor segurança, use arquivo .env para a API key.")
                 settings_win.destroy()
             tk.Button(settings_win, text="Salvar", command=save_settings).grid(row=4, column=0, pady=10)
             tk.Button(settings_win, text="Cancelar", command=settings_win.destroy).grid(row=4, column=1, pady=10)
@@ -297,19 +325,14 @@ def main():
 
         def prompt_for_api_key_if_needed():
             """Prompts the user for the API key if it's not already set."""
-            if not settings.get("gemini_api_key"):
-                # Use simpledialog to ask for the key
-                # This needs to be run in the main thread, so we might need to adjust
-                # how it's called or handle it before starting the thread if the key is missing.
-                # For now, let's assume it can be called and will block appropriately.
-                # The actual prompt should ideally happen before starting the thread or be managed carefully.
-                # A better approach might be to check before even calling threaded_operation for these choices.
-                # For this iteration, we'll try to prompt and if it fails, we exit the task.
-                key = tk.simpledialog.askstring("Chave da API Gemini", 
-                                                "Por favor, insira sua chave da API Gemini:", 
+            if not settings.get("api_key"):
+                key = tk.simpledialog.askstring("Chave da API Claude",
+                                                "Por favor, insira sua chave da API Anthropic Claude.\n"
+                                                "Dica: Para melhor segurança, configure no arquivo .env\n"
+                                                "como ANTHROPIC_API_KEY=sua_chave_aqui",
                                                 parent=root)
                 if key:
-                    settings["gemini_api_key"] = key
+                    settings["api_key"] = key
                     api_key_var.set(key)
                     # Persist the new key
                     try:
@@ -318,8 +341,9 @@ def main():
                         logger.error("Failed to save API key to config.json", error=str(e))
                     return True
                 else:
-                    messagebox.showwarning("Chave da API Necessária", 
-                                           "A chave da API Gemini é necessária para esta operação.")
+                    messagebox.showwarning("Chave da API Necessária",
+                                           "A chave da API Anthropic Claude é necessária para esta operação.\n"
+                                           "Configure no arquivo .env ou nas configurações.")
                     return False
             return True # Key already exists
 
@@ -335,20 +359,9 @@ def main():
             def task():
                 # Check for API key if needed by the operation
                 if choice in ["2", "3", "4"]: # Operations requiring API key
-                    if not settings.get("gemini_api_key"):
-                        # Prompt for API key in a way that doesn't block the UI thread improperly
-                        # This is tricky. For now, let's call a function that handles this.
-                        # The actual prompt should ideally happen before the thread starts or be managed carefully.
-                        # A better approach might be to check before even calling threaded_operation for these choices.
-                        # For this iteration, we'll try to prompt and if it fails, we exit the task.
-                        
-                        # We need to run the dialog in the main thread. 
-                        # A simple way is to schedule it and wait, but that's complex from a worker thread.
-                        # The prompt_for_api_key_if_needed was designed to be called from main thread.
-                        # Let's adjust: check key, if missing, show error and don't start.
-                        # This check should ideally be outside the thread, before starting it.
-                        # Re-evaluating: The prompt should be before this task() starts.
-                        pass # API key check will be done before starting the thread for relevant operations
+                    if not settings.get("api_key"):
+                        # API key check will be done before starting the thread for relevant operations
+                        pass
 
                 for btn in operation_buttons:
                     btn.config(state='disabled')
@@ -359,8 +372,8 @@ def main():
 
 
                 try:
-                    run_operation(choice, int(year_var.get()), settings["competitions"], 
-                                  settings["pdf_dir"], settings["csv_dir"], settings["gemini_api_key"],
+                    run_operation(choice, int(year_var.get()), settings["competitions"],
+                                  settings["pdf_dir"], settings["csv_dir"], settings["api_key"],
                                   progress_callback=update_progress, cancel_event=cancel_event)
                     # Status message is now handled by run_operation or its sub-functions for success/failure/cancellation
                     # So, we might not need a generic success message here unless no specific message was shown.
@@ -474,12 +487,23 @@ def main():
 
 def process_pdfs(pdf_dir: Path, jogos_resumo_csv: Path, 
                  receitas_detalhe_csv: Path, despesas_detalhe_csv: Path, 
-                 gemini_api_key: str,
+                 api_key: str,
                  progress_callback: Optional[Callable[[float], None]] = None,
                  cancel_event: Optional[threading.Event] = None) -> List[str]:
     """
     Processa os PDFs não analisados e salva os resultados nos arquivos CSV.
-    Retorna uma lista de IDs de PDFs que falharam na análise.
+
+    Args:
+        pdf_dir: Directory containing PDFs to process
+        jogos_resumo_csv: Path to summary CSV file
+        receitas_detalhe_csv: Path to revenue details CSV file
+        despesas_detalhe_csv: Path to expense details CSV file
+        api_key: Anthropic Claude API key
+        progress_callback: Optional callback for progress updates
+        cancel_event: Optional event for cancellation
+
+    Returns:
+        List of PDF IDs that failed processing
     """
     processed_ids = set()
     failed_pdf_ids = [] # List to store IDs of PDFs that failed processing
@@ -531,8 +555,8 @@ def process_pdfs(pdf_dir: Path, jogos_resumo_csv: Path,
             with open(pdf_file_path_obj, 'rb') as f:
                 pdf_content_bytes = f.read()
 
-            response = analyze_pdf(pdf_content_bytes, gemini_api_key) # Pass gemini_api_key
-            
+            response = analyze_pdf(pdf_content_bytes, api_key)  # Use Claude via analyze_pdf
+
             # Cache successful responses
             if not response.get("error"):
                 try:
@@ -546,7 +570,7 @@ def process_pdfs(pdf_dir: Path, jogos_resumo_csv: Path,
 
             if response.get("error"):
                 error_message = response.get("error")
-                operation_logger.error("Error analyzing PDF with Gemini", 
+                operation_logger.error("Error analyzing PDF with Claude", 
                                       error=error_message, 
                                       filename=pdf_file, 
                                       id=id_jogo_cbf)
@@ -680,14 +704,21 @@ def overwrite_row_in_csv(file_path, new_row, key_field):
         writer.writeheader()
         writer.writerows(rows)
 
-def reprocess_all_pdfs(pdf_dir, jogos_resumo_csv, receitas_detalhe_csv, despesas_detalhe_csv, gemini_api_key):
+def reprocess_all_pdfs(pdf_dir, jogos_resumo_csv, receitas_detalhe_csv, despesas_detalhe_csv, api_key):
     """
     Processes all PDFs and overwrites the corresponding rows in the CSVs.
     Only updates jogos_resumo_csv (summary), ignores details.
+
+    Args:
+        pdf_dir: Directory containing PDFs
+        jogos_resumo_csv: Path to summary CSV
+        receitas_detalhe_csv: Path to revenue CSV (currently unused)
+        despesas_detalhe_csv: Path to expenses CSV (currently unused)
+        api_key: Anthropic Claude API key
     """
     from .validation import validate_summary
     import datetime
-    from .gemini import analyze_pdf
+    from .claude import analyze_pdf_with_claude as analyze_pdf
     from pathlib import Path
     pdf_dir = Path(pdf_dir)
     jogos_resumo_csv = Path(jogos_resumo_csv)
@@ -697,7 +728,7 @@ def reprocess_all_pdfs(pdf_dir, jogos_resumo_csv, receitas_detalhe_csv, despesas
         try:
             with open(pdf_file_path_obj, 'rb') as f:
                 pdf_content_bytes = f.read()
-            response = analyze_pdf(pdf_content_bytes, gemini_api_key)
+            response = analyze_pdf(pdf_content_bytes, api_key)
             match_details = response.get("match_details", {})
             financial_data = response.get("financial_data", {})
             audience_stats = response.get("audience_statistics", {})
