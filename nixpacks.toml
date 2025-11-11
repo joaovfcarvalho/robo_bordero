@@ -2,7 +2,7 @@
 nixPkgs = ["python311"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = ["python -m pip install -r requirements.txt"]
 
 [start]
 cmd = "streamlit run src/dashboard.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true"
