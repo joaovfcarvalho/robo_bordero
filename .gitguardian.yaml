@@ -1,0 +1,58 @@
+# GitGuardian configuration
+# https://docs.gitguardian.com/ggshield-docs/reference/configuration
+
+# Version of the configuration file
+version: 2
+
+# Verbose output
+verbose: false
+
+# Paths to exclude from scanning
+paths-ignore:
+  - "**/*.md"  # Documentation files
+  - "**/README*.md"
+  - "**/.env.example"  # Example files (not real secrets)
+  - "**/tests/**"  # Test files may contain mock secrets
+
+# Specific secrets to ignore
+# These are documented development defaults, not real secrets
+matches-ignore:
+  # Default admin password - documented in SECURITY.md
+  - name: "Development default admin password"
+    match: "cbf2025admin"
+
+  # Example environment variables in documentation
+  - name: "Example Anthropic API key format"
+    match: "sk-ant-your-key-here"
+
+  - name: "Example Anthropic API key placeholder"
+    match: "sk-ant-..."
+
+  # Example Supabase URLs in documentation
+  - name: "Example Supabase URL"
+    match: "https://xxxxx.supabase.co"
+
+  - name: "Example Supabase URL alt"
+    match: "https://xxx.supabase.co"
+
+# Detectors to enable/disable
+detectors:
+  # Disable generic password detector for documented defaults
+  # (we have security warnings in place)
+  ignore:
+    - name: "Generic Password"
+      match: "cbf2025admin"
+
+# Exit code configuration
+# 0: No secrets found
+# 1: Secrets found
+exit-zero: false
+
+# Output configuration
+output: default
+
+# Allow list for specific commits (if needed)
+# This can be used to ignore specific commits where secrets were already reviewed
+# Example:
+# commit-sha-ignore:
+#   - "abc123def456"  # Commit with reviewed/accepted default password

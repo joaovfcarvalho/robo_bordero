@@ -1,6 +1,3 @@
-# Railway build exclusions
-# Similar to .dockerignore but Railway-specific
-
 # Python
 __pycache__/
 *.py[cod]
@@ -9,10 +6,13 @@ __pycache__/
 .Python
 venv/
 env/
+.env
 *.egg-info/
 
-# Node (build artifacts excluded, source needed)
+# Node
 node_modules/
+frontend/node_modules/
+frontend/dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -22,6 +22,7 @@ yarn-error.log*
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
@@ -36,5 +37,8 @@ cache/
 
 # Git
 .git/
+.gitignore
 
-# Don't exclude frontend source - needed for build!
+# Documentation
+*.md
+ROADMAP.md
