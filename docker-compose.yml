@@ -1,15 +1,22 @@
 version: '3.8'
 
+# Docker Compose configuration for local development
+# WARNING: DO NOT use default passwords in production!
+# Set proper environment variables via .env file
+
 services:
   app:
     build: .
     ports:
       - "8000:8000"
     environment:
+      # REQUIRED: Set these in .env file or Railway/Render dashboard
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      # SECURITY: Change default password in production!
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-cbf2025admin}
+      # Optional
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
     restart: unless-stopped
     healthcheck:
@@ -23,6 +30,7 @@ services:
     build: .
     command: python -m src.cloud_worker
     environment:
+      # Same credentials as main app
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}

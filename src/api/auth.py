@@ -8,6 +8,7 @@ import secrets
 import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
+import warnings
 
 security = HTTPBearer()
 
@@ -15,8 +16,26 @@ security = HTTPBearer()
 _active_tokens = {}
 
 def get_admin_password() -> str:
-    """Get admin password from environment"""
-    return os.getenv("ADMIN_PASSWORD", "cbf2025admin")
+    """
+    Get admin password from environment.
+
+    WARNING: The default password is for DEVELOPMENT ONLY!
+    ALWAYS set ADMIN_PASSWORD environment variable in production.
+    """
+    # Default password for development - NOT for production use!
+    default_dev_password = "cbf2025admin"
+    password = os.getenv("ADMIN_PASSWORD")
+    
+    if not password:
+        # Using default password - log warning
+        warnings.warn(
+            "⚠️  Using default admin password! Set ADMIN_PASSWORD environment variable in production.",
+            UserWarning,
+            stacklevel=2
+        )
+        password = default_dev_password
+    
+    return password
 
 
 def generate_token() -> str:
