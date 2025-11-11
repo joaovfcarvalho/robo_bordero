@@ -10,6 +10,7 @@ google-genai==1.13.0  # Legacy - will be deprecated
 
 # Security
 keyring>=24.0.0
+cryptography>=41.0.0  # For encrypted config files
 
 # Data validation schemas
 pydantic>=2.0.0
@@ -33,3 +34,6 @@ pytest-cov>=4.1.0
 black>=23.0.0
 mypy>=1.7.0
 tqdm>=4.66.0
+
+# Cloud worker / scheduling
+schedule>=1.2.0  # For continuous worker mode

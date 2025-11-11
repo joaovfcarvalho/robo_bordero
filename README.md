@@ -1,7 +1,9 @@
 # CBF Robot
 
 ## Overview
-The CBF Robot is a Python-based application designed to automate the collection and intelligent analysis of match reports (borderôs) from the Brazilian Football Confederation (CBF) website. It utilizes web scraping techniques to gather data, integrates with Anthropic's Claude Haiku 4.5 API for AI-powered analysis, and stores structured data in Supabase (cloud PostgreSQL database). The application provides both a traditional GUI and a modern Natural Language Query (NLQ) dashboard for interaction.
+The CBF Robot is a fully cloud-based Python application designed to automate the collection and intelligent analysis of match reports (borderôs) from the Brazilian Football Confederation (CBF) website. It runs 24/7 in the cloud (Railway/Render), uses Anthropic's Claude Haiku 4.5 API for AI-powered analysis, stores all data in Supabase (cloud PostgreSQL + Storage), and provides a web dashboard for data exploration.
+
+🌟 **Key Feature**: Runs entirely in the cloud - no local machine required!
 
 ## Features
 - **Web Scraping:** Automatically downloads PDF match reports (borderôs) from the CBF website for specified competitions and years
@@ -153,40 +155,120 @@ This script will:
 - Migrate all CSV data to PostgreSQL
 - Preserve all historical data
 
-### 6. Run the Application
+### 6. Deploy to Cloud (Recommended - Fully Automated!)
 
-#### Main GUI Application
+🌟 **No local machine required! Deploy once and forget it.**
+
+#### Option A: Railway (Recommended)
+
+1. **Sign up** at [railway.app](https://railway.app)
+2. **Create new project** → "Deploy from GitHub repo"
+3. **Connect** this repository
+4. **Railway will auto-detect** `railway.toml` and create 2 services:
+   - Dashboard (Streamlit web interface)
+   - Worker (scheduled PDF scraper, runs daily at 2 AM)
+5. **Set environment variables** in Railway dashboard for both services:
+   ```
+   ANTHROPIC_API_KEY=your_key_here
+   SUPABASE_URL=https://xxxxx.supabase.co
+   SUPABASE_KEY=your_anon_key_here
+   SUPABASE_SERVICE_KEY=your_service_role_key_here
+   ```
+6. **Deploy!** Railway will build and deploy automatically
+7. **Access your dashboard** at the generated Railway URL
+
+**Cost**: ~$5-10/month (starts with $5 free credit)
+
+#### Option B: Render
+
+1. **Sign up** at [render.com](https://render.com)
+2. **New** → **Blueprint**
+3. **Connect** this repository
+4. **Render will detect** `render.yaml` and create:
+   - Web service (dashboard)
+   - Cron job (daily scraper at 2 AM)
+5. **Set environment variables** in Render dashboard
+6. **Deploy!**
+
+**Cost**: Free tier available (with cold starts) or $7/month for always-on
+
+#### What Happens After Deployment:
+
+- 🤖 **Automated scraping**: Worker runs daily at 2 AM UTC, downloads new borderôs from CBF
+- 🧠 **AI processing**: Claude Haiku 4.5 extracts data from PDFs
+- 💾 **Cloud storage**: PDFs → Supabase Storage, Data → PostgreSQL
+- 📊 **Web dashboard**: Access your data anytime via browser
+- 🔄 **No maintenance**: Runs 24/7 without your involvement!
+
+---
+
+### 7. Run Locally (Optional - For Development/Testing)
+
+If you want to run locally for development:
+
+#### Dashboard Only
 ```bash
-python src/main.py
+streamlit run src/dashboard.py
 ```
-or
+
+#### Manual Scraping Job
 ```bash
-python run.py
+# Run once
+RUN_ONCE=true python -m src.cloud_worker
+
+# Or continuous mode with schedule
+python -m src.cloud_worker
 ```
 
-#### Natural Language Query Dashboard
+#### Legacy GUI (Deprecated)
 ```bash
-streamlit run src/dashboard_nlq.py
+python src/main.py  # Desktop GUI, will be removed in future
 ```
 
-This will open an interactive dashboard where you can ask questions like:
-- "O que o Santos cobrou do Flamengo no seu jogo como visitante?"
-- "Qual foi o público médio do Corinthians em 2025?"
-- "Quais foram os 5 jogos com maior receita?"
+---
 
-## Usage
+## Usage (Cloud Deployment)
 
-When you run the application, a small window will appear. Use the "Configurações" menu to set your API key and other preferences if you haven't already.
+Once deployed to Railway/Render, the system works fully automatically:
 
-The main window has five buttons for operations:
+### Automated Daily Workflow
 
-1.  **1. Apenas download de novos borderôs:** Downloads PDF borderôs for the year and competitions specified in your settings. It only downloads files not already present.
-2.  **2. Apenas análise de borderôs não processados:** Analyzes PDFs in the `PDF_DIR` using the Gemini API. It checks `jogos_resumo.csv` and processes only new PDFs.
-3.  **3. Download e análise (execução completa):** Performs both download and analysis sequentially.
-4.  **4. Normalizar Nomes (CSV):** Processes `jogos_resumo.csv` to create/update `jogos_resumo_clean.csv` by normalizing team, stadium, and competition names using lookups (which may also be refreshed using the Gemini API if new names are found).
-5.  **5. Validar Dados (jogos_resumo.csv):** Runs data integrity checks and logs alerts for anomalies.
+1. **2 AM UTC every day**: Cloud worker wakes up
+2. **Download**: Scrapes new borderôs from CBF website
+3. **Process**: Claude Haiku 4.5 analyzes PDFs and extracts data
+4. **Store**: PDFs uploaded to Supabase Storage, data saved to PostgreSQL
+5. **Normalize**: AI-powered name normalization runs automatically
+6. **Sleep**: Worker shuts down until next day
 
-A message box will indicate when an operation is complete. Progress is shown in a bar at the bottom of the window.
+### Accessing Your Dashboard
+
+1. Open the Railway/Render URL in your browser
+2. Dashboard loads automatically with latest data
+3. Use filters to explore:
+   - Filter by date range, team, competition, stadium
+   - View financial metrics, attendance statistics
+   - Compare team performance
+   - Analyze stadium revenue
+
+### Manual Triggers (Optional)
+
+If you want to trigger scraping manually:
+
+**Railway**:
+- Go to your worker service in Railway dashboard
+- Click "Restart" to run immediately
+
+**Render**:
+- Go to your cron job in Render dashboard
+- Click "Trigger Now"
+
+### Monitoring
+
+Check logs in Railway/Render dashboard to see:
+- Number of PDFs downloaded
+- Processing successes/failures
+- Database operations
+- Any errors or warnings
 
 ## Data Storage
 

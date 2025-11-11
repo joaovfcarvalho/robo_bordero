@@ -3,27 +3,57 @@
 ## 🎯 Project Goals
 
 This roadmap outlines the migration of CBF Robot from:
-- **Google Gemini API** → **Anthropic Claude Haiku 4.5**
-- **Local CSV/PDF Storage** → **Supabase Cloud Storage + PostgreSQL**
-- **Static Dashboard** → **Interactive NLQ (Natural Language Query) Dashboard**
+- **Google Gemini API** → **Anthropic Claude Haiku 4.5** ✅ COMPLETED
+- **Local CSV/PDF Storage** → **Supabase Cloud Storage + PostgreSQL** ✅ COMPLETED
+- **Local Desktop App** → **Fully Cloud-Based Application (Railway/Render)** ✅ COMPLETED
+- **Static Dashboard** → **Interactive Cloud Dashboard with Natural Language Queries** 🚧 IN PROGRESS
 
 ## 📊 Current State Analysis
 
-### What We Have
-- ✅ Working Gemini API integration for PDF extraction
-- ✅ CSV-based storage (jogos_resumo.csv, receitas_detalhe.csv, despesas_detalhe.csv)
-- ✅ Local PDF storage (296MB, 3,500+ files)
-- ✅ Tkinter GUI for operations
-- ✅ Streamlit dashboard for visualization
-- ✅ Name normalization with lookup tables
+### What We Have NOW (Cloud Architecture)
+- ✅ **Claude Haiku 4.5 API** integration with vision support for image-based PDFs
+- ✅ **Supabase Cloud Storage** for PDFs (no more git bloat!)
+- ✅ **Supabase PostgreSQL** for structured data (replaces CSV)
+- ✅ **Cloud Worker** (src/cloud_worker.py) for automated scheduled processing
+- ✅ **Streamlit Dashboard** connected to Supabase (cloud-ready)
+- ✅ **Railway/Render deployment configs** for full cloud deployment
+- ✅ **Name normalization** with AI-powered lookups stored in database
 
-### Known Challenges
-- ⚠️ **Image-based PDFs**: Many borderôs are scanned images, not native PDFs
-- ⚠️ **Inconsistent Structures**: Each borderô has unique layout/formatting
-- ⚠️ **Non-standardized Names**: Teams, stadiums, competitions use different formats
-- ⚠️ **Git Bloat**: PDFs tracked in repository (not scalable)
-- ⚠️ **API Key Security**: Stored in plaintext config.json
-- ⚠️ **CSV Limitations**: No transactions, concurrent write issues
+### Cloud Architecture Overview
+```
+┌─────────────────────────────────────────────────────┐
+│              CLOUD DEPLOYMENT (Railway)              │
+├─────────────────────────────────────────────────────┤
+│                                                       │
+│  ┌──────────────────┐      ┌──────────────────┐    │
+│  │  Service 1:      │      │  Service 2:      │    │
+│  │  Dashboard       │      │  Scheduled Worker│    │
+│  │  (Streamlit)     │      │  (Cron: 2 AM)    │    │
+│  └────────┬─────────┘      └────────┬─────────┘    │
+│           │                         │               │
+│           │  Read data             │ Write data    │
+│           ├────────────┬────────────┤               │
+│           ▼            ▼            ▼               │
+│     ┌─────────────────────────────────┐            │
+│     │       SUPABASE                  │            │
+│     │  - PostgreSQL (data)            │            │
+│     │  - Storage (PDFs)               │            │
+│     └─────────────────────────────────┘            │
+│                                                      │
+│  External APIs:                                     │
+│  - Claude Haiku 4.5 (PDF processing)                │
+│  - CBF Website (PDF downloads)                      │
+└─────────────────────────────────────────────────────┘
+```
+
+### Former Challenges (NOW SOLVED)
+- ✅ **Image-based PDFs**: Solved with Claude Haiku 4.5's vision capabilities
+- ✅ **Inconsistent Structures**: Claude handles layout variations better than Gemini
+- ✅ **Non-standardized Names**: AI-powered normalization with database lookups
+- ✅ **Git Bloat**: PDFs now in Supabase Storage (removed 296MB from git)
+- ✅ **API Key Security**: Secure environment variable management
+- ✅ **CSV Limitations**: PostgreSQL with transactions and concurrent access
+- ✅ **Local Machine Dependency**: Fully cloud-based, runs 24/7 without your machine
 
 ---
 

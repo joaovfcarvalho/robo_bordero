@@ -20,20 +20,58 @@ def main():
     print("  CBF Robot - Credential Setup")
     print("="*60)
     print()
-    print("This will save your credentials SECURELY in your OS keyring:")
-    print("  • Windows: Credential Manager")
-    print("  • macOS: Keychain")
-    print("  • Linux: Secret Service API")
+
+    # Test if keyring is available
+    test_manager = ConfigManager(use_encrypted_config=False)
+    has_keyring = test_manager._has_keyring
+
+    if has_keyring:
+        print("✓ OS Keyring detected (recommended)")
+        print("  • Windows: Credential Manager")
+        print("  • macOS: Keychain")
+        print("  • Linux: Secret Service API")
+        print()
+        use_encrypted = input("Use encrypted config file instead? (y/N): ").lower() == 'y'
+    else:
+        print("⚠️  OS Keyring not available (admin restrictions?)")
+        print("  → Using encrypted config file instead")
+        print()
+        use_encrypted = True
+
     print()
+
+    # Initialize manager with appropriate backend
+    config_password = None
+    if use_encrypted:
+        print("📝 Encrypted config file will be stored at:")
+        print(f"   {Path.home() / '.cbf_robot_config'}")
+        print()
+        print("💡 This file can sync via OneDrive/Google Drive!")
+        print()
+        config_password = getpass.getpass("Enter encryption password (hidden): ").strip()
+        if not config_password:
+            print("\n✗ No password entered. Using default encryption.")
+            config_password = "cbf_robot_default"  # Fallback
+
+        # Confirm password
+        confirm_password = getpass.getpass("Confirm password (hidden): ").strip()
+        if config_password != confirm_password:
+            print("\n✗ Passwords don't match. Setup cancelled.")
+            return
+
+    manager = ConfigManager(use_encrypted_config=use_encrypted, config_password=config_password)
+
+    print()
+    print("="*60)
     print("✓ You only need to do this ONCE")
     print("✓ Credentials persist across sessions")
     print("✓ No .env file needed")
-    print("✓ Secure (encrypted by your OS)")
+    if use_encrypted:
+        print("✓ Works on restricted machines (no admin rights needed)")
+    print("✓ Secure (encrypted)")
     print()
     print("="*60)
     print()
-
-    manager = ConfigManager()
 
     # Check if already configured
     existing_key = manager.get_anthropic_key()
