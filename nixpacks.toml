@@ -7,6 +7,3 @@ cmds = [
     "python -m pip install --upgrade pip",
     "python -m pip install -r requirements.txt"
 ]
-
-[start]
-cmd = "PYTHONPATH=/app:$PYTHONPATH streamlit run src/dashboard.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true"
