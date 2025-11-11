@@ -19,6 +19,41 @@ ADMIN_PASSWORD = "cbf2025admin"
 def load_data():
     # Import database client
     from src.database import get_database_client
+    import os
+
+    # Check if required environment variables are set
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
+
+    if not supabase_url or not supabase_key:
+        st.error("⚠️ **Configuração Incompleta**")
+        st.warning("""
+        As variáveis de ambiente do Supabase não estão configuradas.
+
+        **Para Railway:**
+        1. Acesse o painel do Railway
+        2. Selecione o serviço 'cbf-dashboard'
+        3. Vá em 'Variables'
+        4. Adicione as seguintes variáveis:
+           - `SUPABASE_URL`: Sua URL do Supabase (exemplo: https://xxxxx.supabase.co)
+           - `SUPABASE_KEY`: Sua chave anon do Supabase
+           - `ANTHROPIC_API_KEY`: Sua chave da API do Claude (para funcionalidades admin)
+
+        **Variáveis faltando:**
+        """)
+        missing_vars = []
+        if not supabase_url:
+            missing_vars.append("❌ SUPABASE_URL")
+        else:
+            missing_vars.append("✅ SUPABASE_URL")
+        if not supabase_key:
+            missing_vars.append("❌ SUPABASE_KEY")
+        else:
+            missing_vars.append("✅ SUPABASE_KEY")
+
+        st.code("\n".join(missing_vars))
+        st.info("Após configurar as variáveis, o Railway fará o redeploy automaticamente.")
+        return pd.DataFrame()  # Return empty DataFrame
 
     try:
         # Get data from Supabase
@@ -45,14 +80,20 @@ def load_data():
             data['estadio'] = data['estadio_normalizado'].fillna(data.get('estadio', ''))
 
     except Exception as e:
-        st.error(f"Erro ao carregar dados do Supabase: {e}")
+        st.error(f"❌ Erro ao conectar ao Supabase: {str(e)}")
         st.info("Tentando carregar dados do CSV local como fallback...")
 
         # Fallback to CSV if Supabase fails
         try:
             data = pd.read_csv("csv/jogos_resumo_clean.csv")
+            st.success("✅ Dados carregados do CSV local")
         except FileNotFoundError:
-            st.error("Arquivo CSV também não encontrado. Verifique a configuração do Supabase.")
+            st.error("Arquivo CSV também não encontrado.")
+            st.info("""
+            **Como resolver:**
+            1. Configure as variáveis de ambiente do Supabase no Railway
+            2. Ou execute o worker para gerar dados locais
+            """)
             return pd.DataFrame()  # Return empty DataFrame
     
     # Explicitly convert 'data_jogo' to datetime, coercing errors to NaT
@@ -126,6 +167,31 @@ def load_data():
 data = load_data()
 
 st.title("CBF Robot - Análise de Jogos de Futebol")
+
+# Check if data is empty and show setup instructions
+if data.empty:
+    st.warning("""
+    ### 📋 Dashboard não configurado
+
+    O dashboard precisa de dados para funcionar. Siga os passos abaixo:
+
+    #### 🔧 Configuração do Railway:
+    1. Acesse o [Railway Dashboard](https://railway.app/dashboard)
+    2. Selecione seu projeto
+    3. Clique no serviço **cbf-dashboard**
+    4. Vá em **Variables**
+    5. Adicione as variáveis de ambiente necessárias (veja acima)
+
+    #### ℹ️ Informações importantes:
+    - Após configurar as variáveis, o Railway fará redeploy automaticamente
+    - O processo de deploy leva cerca de 2-5 minutos
+    - Recarregue a página após o deploy completar
+
+    #### 📖 Documentação:
+    - [Guia de Deploy](https://github.com/joaovfcarvalho/robo_bordero#readme)
+    - [Configuração do Supabase](https://supabase.com/docs)
+    """)
+    st.stop()  # Stop execution here if no data
 
 # --- FILTERS ---
 st.sidebar.header("Filtros")
