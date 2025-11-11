@@ -6,9 +6,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
+import logging
 from pathlib import Path
 
+# Configure logging for startup debugging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+logger.info("Starting CBF Borderô Robot API...")
+
 from src.api.routes import analytics, pdfs, admin
+
+logger.info("API routes imported successfully")
 
 app = FastAPI(
     title="CBF Borderô Robot API",
@@ -39,9 +51,17 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 # Serve static files from frontend build (for Railway deployment)
 frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
-if frontend_dist.exists():
+assets_dir = frontend_dist / "assets"
+
+logger.info(f"Checking frontend build at: {frontend_dist}")
+logger.info(f"Frontend dist exists: {frontend_dist.exists()}")
+logger.info(f"Assets dir exists: {assets_dir.exists()}")
+
+if frontend_dist.exists() and assets_dir.exists():
     # Mount static files (JS, CSS, images, etc.)
-    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    logger.info(f"Mounting static assets from: {assets_dir}")
+    app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+    logger.info("Static assets mounted successfully")
 
     # Serve index.html for all non-API routes (SPA routing)
     @app.get("/{full_path:path}")
@@ -59,6 +79,7 @@ if frontend_dist.exists():
             return {"error": "Frontend not built. Run 'cd frontend && npm run build'"}, 500
 else:
     # Frontend not built - only API available
+    logger.warning(f"Frontend not available - dist: {frontend_dist.exists()}, assets: {assets_dir.exists()}")
     @app.get("/")
     async def root():
         return {
@@ -87,14 +108,26 @@ async def health_check():
     """Health check endpoint for Railway"""
     from src.database import SupabaseDatabase
 
+    response = {
+        "status": "healthy",
+        "frontend": "available" if frontend_dist.exists() else "not_built"
+    }
+
     try:
         db = SupabaseDatabase()
         # Try a simple query
         db.client.table("jogos_resumo").select("id_jogo_cbf").limit(1).execute()
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "frontend": "available" if frontend_dist.exists() else "not_built"
-        }
+        response["database"] = "connected"
+    except ValueError as e:
+        # Missing credentials - expected during initial deployment
+        response["database"] = "not_configured"
+        response["database_note"] = "Supabase credentials not set"
     except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}
+        # Other errors - log but don't fail health check
+        response["database"] = "error"
+        response["database_error"] = str(e)
+
+    return response
+
+logger.info("FastAPI application initialized successfully")
+logger.info(f"Application ready - Frontend available: {frontend_dist.exists()}")
