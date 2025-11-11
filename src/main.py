@@ -30,16 +30,20 @@ from .validation import validate_summary, validate_revenue, validate_expense
 from .data_validator import validate_data_integrity # Added
 import threading
 from typing import Callable, Optional, List # Added
+from .config_manager import get_config_manager
 
 # Set up structured logging
 logger = setup_logging()
 
-# Get API key from environment (preferred) or will prompt user
-API_KEY = os.getenv('ANTHROPIC_API_KEY')
+# Initialize config manager for secure credential storage
+config_manager = get_config_manager()
+
+# Get API key using priority: keyring -> env -> config.json -> prompt
+API_KEY = config_manager.get_anthropic_key()
 if API_KEY:
-    logger.info("Claude API key loaded from environment")
+    logger.info("Claude API key loaded successfully")
 else:
-    logger.warning("No ANTHROPIC_API_KEY found in environment - will prompt user")
+    logger.warning("No API key found - will prompt user during operation")
 
 def run_normalization(jogos_resumo_csv_path: Path, lookup_dir: Path, clean_csv_path: Path, api_key: str):
     """
@@ -327,23 +331,34 @@ def main():
             """Prompts the user for the API key if it's not already set."""
             if not settings.get("api_key"):
                 key = tk.simpledialog.askstring("Chave da API Claude",
-                                                "Por favor, insira sua chave da API Anthropic Claude.\n"
-                                                "Dica: Para melhor segurança, configure no arquivo .env\n"
-                                                "como ANTHROPIC_API_KEY=sua_chave_aqui",
+                                                "Por favor, insira sua chave da API Anthropic Claude.\n\n"
+                                                "Será salva de forma segura no seu sistema.\n"
+                                                "Você só precisa fazer isso uma vez!",
                                                 parent=root)
                 if key:
                     settings["api_key"] = key
                     api_key_var.set(key)
-                    # Persist the new key
-                    try:
-                        config_file.write_text(json.dumps(settings, indent=2))
-                    except Exception as e:
-                        logger.error("Failed to save API key to config.json", error=str(e))
+
+                    # Save to OS keyring (secure, persistent)
+                    from .config_manager import KEY_ANTHROPIC_API
+                    if config_manager.set_credential(KEY_ANTHROPIC_API, key, persist=True):
+                        messagebox.showinfo("Sucesso",
+                                          "API Key salva com segurança!\n\n"
+                                          "Você não precisará configurá-la novamente.")
+                        logger.info("API key saved to OS keyring")
+                    else:
+                        # Fallback to config.json if keyring fails
+                        try:
+                            config_file.write_text(json.dumps(settings, indent=2))
+                            logger.warning("Keyring failed, saved to config.json instead")
+                        except Exception as e:
+                            logger.error("Failed to save API key", error=str(e))
+
                     return True
                 else:
                     messagebox.showwarning("Chave da API Necessária",
-                                           "A chave da API Anthropic Claude é necessária para esta operação.\n"
-                                           "Configure no arquivo .env ou nas configurações.")
+                                           "A chave da API Anthropic Claude é necessária para esta operação.\n\n"
+                                           "Dica: Execute 'python -m src.config_manager set' para configurar.")
                     return False
             return True # Key already exists
 

@@ -91,15 +91,31 @@ pip install -r requirements.txt
    - `anon` public key
    - (Optional) `service_role` key for admin operations
 
-### 4. Configure Environment Variables
+### 4. Configure API Keys (ONE-TIME SETUP)
 
-Create a `.env` file in the project root:
+**✨ Recommended: Secure OS Keyring (Easiest!)**
+
+Run the setup script **once** to save your API key securely:
+
+```bash
+python setup_credentials.py
+```
+
+This will:
+- ✅ Save your API key in your **OS keyring** (Windows Credential Manager, macOS Keychain, Linux Secret Service)
+- ✅ **Persist forever** - you only do this once!
+- ✅ **Secure** - encrypted by your operating system
+- ✅ **No .env file needed** - no risk of accidentally committing credentials
+
+**Alternative: .env File (if keyring doesn't work)**
+
+If the keyring method doesn't work on your system, create a `.env` file:
 
 ```bash
 # Anthropic Claude API
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 
-# Supabase Configuration
+# Supabase Configuration (Phase 2)
 SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_KEY=your_supabase_anon_key_here
 SUPABASE_SERVICE_KEY=your_service_role_key_here
@@ -107,9 +123,21 @@ SUPABASE_SERVICE_KEY=your_service_role_key_here
 
 **Where to get API keys:**
 - **Anthropic API Key**: Get it from [Anthropic Console](https://console.anthropic.com/)
-- **Supabase Keys**: Found in your Supabase project settings → API
+- **Supabase Keys**: Found in your Supabase project settings → API (Phase 2)
 
-⚠️ **Important**: Never commit the `.env` file to git. It's already in `.gitignore`.
+⚠️ **Important**: If using .env, never commit it to git (already in `.gitignore`)
+
+**Manage Credentials:**
+```bash
+# Check what's configured
+python -m src.config_manager list
+
+# Update/change credentials
+python setup_credentials.py
+
+# Delete all credentials
+python -m src.config_manager delete
+```
 
 ### 5. Migrate Existing Data (If You Have CSV/PDF Files)
 
