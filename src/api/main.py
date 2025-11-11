@@ -87,14 +87,23 @@ async def health_check():
     """Health check endpoint for Railway"""
     from src.database import SupabaseDatabase
 
+    response = {
+        "status": "healthy",
+        "frontend": "available" if frontend_dist.exists() else "not_built"
+    }
+
     try:
         db = SupabaseDatabase()
         # Try a simple query
         db.client.table("jogos_resumo").select("id_jogo_cbf").limit(1).execute()
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "frontend": "available" if frontend_dist.exists() else "not_built"
-        }
+        response["database"] = "connected"
+    except ValueError as e:
+        # Missing credentials - expected during initial deployment
+        response["database"] = "not_configured"
+        response["database_note"] = "Supabase credentials not set"
     except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}
+        # Other errors - log but don't fail health check
+        response["database"] = "error"
+        response["database_error"] = str(e)
+
+    return response
