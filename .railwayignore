@@ -1,0 +1,45 @@
+# Railway Ignore File
+# Files and directories to exclude from Railway deployment
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local data files
+pdfs/
+csv/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Tests
+tests/
+pytest.ini
+.pytest_cache/
+
+# Local config
+.env
+.env.local
+config.json
+
+# Worker service backup
+railway.toml.backup
