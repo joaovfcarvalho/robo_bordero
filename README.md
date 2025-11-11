@@ -250,6 +250,34 @@ Once deployed to Railway/Render, the system works fully automatically:
    - Compare team performance
    - Analyze stadium revenue
 
+### Admin Features (Password-Protected)
+
+The dashboard includes password-protected admin options for advanced operations:
+
+**🔒 Admin Password**: `cbf2025admin`
+
+**Available Admin Operations:**
+
+1. **🚀 Executar Rotina Completa (Run Full Routine)**
+   - Downloads all remaining borderôs from CBF website
+   - Processes all unprocessed PDFs with Claude LLM
+   - Updates database with extracted data
+   - Use this for bulk processing or catching up on missed documents
+
+2. **🧪 Processar Documento Específico (Test Specific Document)**
+   - Process a single PDF for testing purposes
+   - Useful for debugging extraction issues
+   - Preview results before saving to database
+   - Save to CSV only when confirmed
+
+**How to Access:**
+1. Scroll to the "🔒 Opções Admin" section in the sidebar
+2. Enter the admin password: `cbf2025admin`
+3. Click "Entrar" to authenticate
+4. Admin options will appear
+
+**Security Note**: The admin password is hardcoded in `src/dashboard.py`. To change it, modify the `ADMIN_PASSWORD` constant at the top of the file.
+
 ### Manual Triggers (Optional)
 
 If you want to trigger scraping manually:
