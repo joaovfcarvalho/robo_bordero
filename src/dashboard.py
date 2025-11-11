@@ -3,11 +3,16 @@ import pandas as pd
 import numpy as np
 import altair as alt # Added for custom chart sorting
 from dotenv import load_dotenv
+import datetime
+from pathlib import Path
 
 # Load environment variables
 load_dotenv()
 
 st.set_page_config(layout="wide") # Moved to the top
+
+# Admin password (hardcoded for security)
+ADMIN_PASSWORD = "cbf2025admin"
 
 # Load data
 @st.cache_data
@@ -213,6 +218,210 @@ estadio_selecionado_single = st.sidebar.selectbox(
     options=[all_stadiums_label] + estadio_options,
     index=0
 )
+
+# --- ADMIN SECTION ---
+st.sidebar.markdown("---")
+st.sidebar.header("🔒 Opções Admin")
+
+# Initialize session state for admin authentication
+if 'admin_authenticated' not in st.session_state:
+    st.session_state.admin_authenticated = False
+
+# Admin authentication
+if not st.session_state.admin_authenticated:
+    admin_password_input = st.sidebar.text_input("Senha Admin:", type="password", key="admin_password")
+    if st.sidebar.button("Entrar"):
+        if admin_password_input == ADMIN_PASSWORD:
+            st.session_state.admin_authenticated = True
+            st.sidebar.success("✅ Autenticado com sucesso!")
+            st.rerun()
+        else:
+            st.sidebar.error("❌ Senha incorreta!")
+else:
+    st.sidebar.success("✅ Admin autenticado")
+
+    # Admin operations
+    st.sidebar.subheader("Operações Administrativas")
+
+    # Routine Running Option
+    if st.sidebar.button("🚀 Executar Rotina Completa", help="Download de todos os borderôs restantes e processamento com LLM"):
+        try:
+            from src.config_manager import get_config_manager
+            from src.scraper import download_pdfs
+            from src.main import process_pdfs
+
+            # Get configurations
+            config_manager = get_config_manager()
+            api_key = config_manager.get_anthropic_key()
+
+            if not api_key:
+                st.sidebar.error("❌ Chave API Claude não configurada!")
+            else:
+                # Default settings
+                current_year = datetime.date.today().year
+                competitions = ["142", "424", "242"]  # Default competitions
+                pdf_dir = Path("pdfs")
+                csv_dir = Path("csv")
+
+                # Create directories if needed
+                pdf_dir.mkdir(exist_ok=True)
+                csv_dir.mkdir(exist_ok=True)
+
+                # Progress tracking
+                progress_bar = st.sidebar.progress(0)
+                status_text = st.sidebar.empty()
+
+                # Step 1: Download PDFs
+                status_text.text("📥 Baixando borderôs...")
+                total_steps = len(competitions) + 1
+                for idx, competition in enumerate(competitions):
+                    progress_bar.progress((idx) / total_steps)
+                    status_text.text(f"📥 Baixando competição {competition}...")
+                    download_pdfs(current_year, competition, str(pdf_dir))
+
+                # Step 2: Process PDFs
+                progress_bar.progress(len(competitions) / total_steps)
+                status_text.text("🤖 Processando borderôs com LLM...")
+
+                jogos_resumo_csv = csv_dir / "jogos_resumo.csv"
+                receitas_detalhe_csv = csv_dir / "receitas_detalhe.csv"
+                despesas_detalhe_csv = csv_dir / "despesas_detalhe.csv"
+
+                failed_pdfs = process_pdfs(pdf_dir, jogos_resumo_csv, receitas_detalhe_csv,
+                                          despesas_detalhe_csv, api_key)
+
+                # Complete
+                progress_bar.progress(1.0)
+                if failed_pdfs:
+                    status_text.text(f"⚠️ Concluído com {len(failed_pdfs)} erros")
+                    st.sidebar.warning(f"PDFs com falha: {', '.join(failed_pdfs)}")
+                else:
+                    status_text.text("✅ Rotina completa executada!")
+                    st.sidebar.success("✅ Todos os borderôs foram processados!")
+
+                st.cache_data.clear()  # Clear cache to reload data
+                st.balloons()
+
+        except Exception as e:
+            st.sidebar.error(f"❌ Erro ao executar rotina: {str(e)}")
+            import traceback
+            st.sidebar.code(traceback.format_exc())
+
+    # Test Specific Document Option
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Testar Documento Específico")
+    test_doc_id = st.sidebar.text_input("ID do Jogo (nome do PDF sem extensão):", key="test_doc_id")
+
+    # Initialize session state for test results
+    if 'test_result' not in st.session_state:
+        st.session_state.test_result = None
+
+    if st.sidebar.button("🧪 Processar Documento de Teste"):
+        if not test_doc_id:
+            st.sidebar.warning("⚠️ Por favor, insira o ID do documento.")
+        else:
+            try:
+                from src.claude import ClaudeClient
+                from src.config_manager import get_config_manager
+
+                # Get API key
+                config_manager = get_config_manager()
+                api_key = config_manager.get_anthropic_key()
+
+                if not api_key:
+                    st.sidebar.error("❌ Chave API Claude não configurada!")
+                else:
+                    # Find and process the PDF
+                    pdf_path = Path("pdfs") / f"{test_doc_id}.pdf"
+
+                    if not pdf_path.exists():
+                        st.sidebar.error(f"❌ PDF não encontrado: {pdf_path}")
+                    else:
+                        with st.spinner(f"Processando documento {test_doc_id}..."):
+                            # Read PDF
+                            with open(pdf_path, 'rb') as f:
+                                pdf_bytes = f.read()
+
+                            # Analyze with Claude
+                            client = ClaudeClient(api_key=api_key)
+                            result = client.analyze_pdf(pdf_bytes)
+
+                            if result.get("success"):
+                                # Store result in session state
+                                st.session_state.test_result = {
+                                    'doc_id': test_doc_id,
+                                    'data': result.get("data", {}),
+                                    'pdf_path': str(pdf_path)
+                                }
+                                st.sidebar.success("✅ Documento processado com sucesso!")
+                            else:
+                                st.sidebar.error(f"❌ Erro no processamento: {result.get('error')}")
+                                st.session_state.test_result = None
+
+            except Exception as e:
+                st.sidebar.error(f"❌ Erro ao processar documento: {str(e)}")
+                import traceback
+                st.sidebar.code(traceback.format_exc())
+                st.session_state.test_result = None
+
+    # Display test results if available
+    if st.session_state.test_result:
+        with st.sidebar.expander("📊 Resultados do Teste", expanded=True):
+            st.json(st.session_state.test_result['data'])
+
+        # Save to CSV button
+        if st.sidebar.button("💾 Salvar Resultado no CSV"):
+            try:
+                from src.db import append_to_csv
+                from src.validation import validate_summary
+
+                data = st.session_state.test_result['data']
+                match_details = data.get("match_details", {})
+                financial_data = data.get("financial_data", {})
+                audience_stats = data.get("audience_statistics", {})
+                doc_id = st.session_state.test_result['doc_id']
+                pdf_path = st.session_state.test_result['pdf_path']
+
+                resumo_jogo = {
+                    "id_jogo_cbf": doc_id,
+                    "data_jogo": match_details.get("match_date"),
+                    "time_mandante": match_details.get("home_team"),
+                    "time_visitante": match_details.get("away_team"),
+                    "estadio": match_details.get("stadium"),
+                    "competicao": match_details.get("competition"),
+                    "publico_pagante": audience_stats.get("paid_attendance"),
+                    "publico_nao_pagante": audience_stats.get("non_paid_attendance"),
+                    "publico_total": audience_stats.get("total_attendance"),
+                    "receita_bruta_total": financial_data.get("gross_revenue"),
+                    "despesa_total": financial_data.get("total_expenses"),
+                    "resultado_liquido": financial_data.get("net_result"),
+                    "caminho_pdf_local": pdf_path,
+                    "data_processamento": datetime.date.today().isoformat(),
+                    "status": "Sucesso",
+                    "log_erro": None
+                }
+
+                csv_path = Path("csv") / "jogos_resumo.csv"
+                headers = list(resumo_jogo.keys())
+                validated = validate_summary([resumo_jogo])
+                append_to_csv(csv_path, validated, headers)
+
+                st.sidebar.success("💾 Salvo no CSV!")
+                st.session_state.test_result = None  # Clear result after saving
+                st.cache_data.clear()
+                st.rerun()
+
+            except Exception as e:
+                st.sidebar.error(f"❌ Erro ao salvar: {str(e)}")
+                import traceback
+                st.sidebar.code(traceback.format_exc())
+
+    # Logout button
+    if st.sidebar.button("🚪 Sair (Admin)"):
+        st.session_state.admin_authenticated = False
+        st.rerun()
+
+st.sidebar.markdown("---")
 
 
 # Apply filters
