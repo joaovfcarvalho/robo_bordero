@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { analyticsApi } from '../api/client'
-import { format } from 'date-fns'
 import { Users, DollarSign, TrendingUp, BarChart3 } from 'lucide-react'
 import {
   BarChart,
@@ -12,12 +11,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
 } from 'recharts'
-
-const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', {
