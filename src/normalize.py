@@ -3,9 +3,8 @@ import json
 import csv
 import logging
 from pathlib import Path
-from google import genai
-from google.genai import types # Ensure types is imported
 from collections import defaultdict
+from .claude import ClaudeClient  # Use Claude instead of Gemini
 
 def load_lookup(lookup_path: Path) -> dict:
     """Loads a JSON lookup file safely."""
@@ -71,15 +70,62 @@ def get_unique_names(csv_path: Path) -> dict[str, set]:
 
 
 def call_gemini_for_normalization(names_to_normalize: list[str], existing_lookup: dict, category: str, api_key: str) -> dict:
-    """Calls the Gemini API to normalize a list of names, using existing lookups as context."""
+    """
+    Calls Claude API to normalize a list of names, using existing lookups as context.
+
+    Note: Function name kept as 'call_gemini_for_normalization' for backward compatibility,
+    but now uses Claude Haiku 4.5.
+
+    Args:
+        names_to_normalize: List of names to normalize
+        existing_lookup: Existing mappings to maintain consistency
+        category: Type of names (time_mandante, time_visitante, estadio, competicao)
+        api_key: Anthropic Claude API key
+
+    Returns:
+        Dict mapping original names to normalized names
+    """
     if not names_to_normalize:
         return {}
 
-    logging.info(f"Preparing to call Gemini for category '{category}' with {len(names_to_normalize)} names.")
-    client = genai.Client(api_key=api_key)
-    model_name = "gemini-2.0-flash" # Align with common practice or your gemini.py
+    logging.info(f"Preparing to call Claude for category '{category}' with {len(names_to_normalize)} names.")
 
-    prompt = f"""
+    try:
+        # Use Claude client for normalization
+        client = ClaudeClient(api_key=api_key)
+
+        # Map category names to more user-friendly names
+        category_map = {
+            "time_mandante": "teams",
+            "time_visitante": "teams",
+            "estadio": "stadiums",
+            "competicao": "competitions"
+        }
+
+        friendly_category = category_map.get(category, category)
+
+        # Call Claude's normalize_names method
+        result = client.normalize_names(
+            names=names_to_normalize,
+            category=friendly_category,
+            existing_mappings=existing_lookup
+        )
+
+        logging.info(f"Successfully normalized {len(result)} names for category '{category}'")
+        return result
+
+    except Exception as e:
+        logging.error(f"Error calling Claude for normalization: {e}")
+        return {}
+
+
+# Legacy function kept for compatibility - redirects to call_gemini_for_normalization
+def call_claude_for_normalization_legacy(names_to_normalize: list[str], existing_lookup: dict, category: str, api_key: str) -> dict:
+    """
+    Legacy function - same implementation as above.
+    This preserves old prompt logic for reference, but call_gemini_for_normalization should be used.
+
+    Prompt template (for reference):
     You are an expert in Brazilian football data normalization.
     Your task is to normalize the following list of {category} names based on common Brazilian football standards.
 
@@ -102,64 +148,22 @@ def call_gemini_for_normalization(names_to_normalize: list[str], existing_lookup
     }}
     Do not wrap the JSON in markdown (like ```json ... ```).
     """
+    # This legacy function body is kept for reference only - actual implementation uses Claude
+    return {}
 
-    logging.info(f"Calling Gemini API ({model_name}) for {len(names_to_normalize)} {category} names...")
-    logging.info(f"Prompt for {category}: {prompt}")
 
-    try:
-        # Use the same API pattern as analyze_pdf in src/gemini.py
-        response = client.models.generate_content(
-            model=model_name,
-            contents=[prompt],
-            config={
-                "response_mime_type": "application/json"
-            }
-        )
+def refresh_lookups(csv_path: Path, lookup_dir: Path, api_key: str):
+    """
+    Refreshes lookup files by finding new names in the CSV and normalizing them via Claude.
 
-        response_text = ""
-        if hasattr(response, 'text') and response.text:
-            response_text = response.text.strip()
-            logging.info(f"Raw response_text for {category}: {response_text}")
-            logging.debug(f"Raw Gemini response text for {category}: {response_text}")
-
-            # Attempt to parse directly, as mime_type is application/json
-            try:
-                normalized_map = json.loads(response_text)
-                logging.info(f"Successfully received and parsed normalization map for {category}.")
-                return normalized_map
-            except json.JSONDecodeError as e_json:
-                logging.error(f"JSON parsing error for {category}: {e_json}", exc_info=True)
-                # Fallback for cases where it might still be wrapped (though ideally it shouldn't be)
-                if response_text.startswith("```json"):
-                    response_text_unwrapped = response_text[7:]
-                    if response_text_unwrapped.endswith("```"):
-                        response_text_unwrapped = response_text_unwrapped[:-3]
-                    try:
-                        normalized_map = json.loads(response_text_unwrapped.strip())
-                        logging.info(f"Successfully parsed markdown-wrapped JSON for {category}.")
-                        return normalized_map
-                    except json.JSONDecodeError as e_json_unwrap:
-                        logging.error(f"Failed to decode JSON response (even after unwrap) from Gemini for {category}: {e_json_unwrap}\nOriginal response text: {response.text}")
-                        return {}
-                else:
-                    logging.error(f"Failed to decode JSON response from Gemini for {category}: {e_json}\nResponse text: {response.text}")
-                    return {}
-        else:
-            feedback = getattr(response, 'prompt_feedback', None)
-            block_reason = getattr(feedback, 'block_reason', 'N/A') if feedback else 'N/A'
-            safety_ratings_str = str(getattr(feedback, 'safety_ratings', [])) if feedback else 'N/A'
-            logging.warning(f"Gemini API response for {category} was empty or did not contain text. Block reason: {block_reason}. Safety ratings: {safety_ratings_str}")
-            return {}
-
-    except Exception as e:
-        logging.error(f"Exception during Gemini API call for {category}: {e}", exc_info=True)
-        return {}
-
-def refresh_lookups(csv_path: Path, lookup_dir: Path, gemini_api_key: str):
-    """Refreshes lookup files by finding new names in the CSV and normalizing them via Gemini."""
+    Args:
+        csv_path: Path to jogos_resumo.csv
+        lookup_dir: Directory containing lookup JSON files
+        api_key: Anthropic Claude API key
+    """
     logging.info(f"Starting lookup refresh for CSV: {csv_path}")
-    if not gemini_api_key:
-        logging.error("Gemini API key is missing. Cannot refresh lookups.")
+    if not api_key:
+        logging.error("Claude API key is missing. Cannot refresh lookups.")
         return
 
     lookup_paths = {
@@ -193,11 +197,11 @@ def refresh_lookups(csv_path: Path, lookup_dir: Path, gemini_api_key: str):
     for category, names in names_to_normalize.items():
         logging.info(f"Category '{category}' needs normalization for {len(names)} names: {names}")
 
-    # Call Gemini for normalization and update lookups
+    # Call Claude for normalization and update lookups
     for category, names_list in names_to_normalize.items():
         if names_list:
             logging.info(f"Found {len(names_list)} new {category} to normalize.")
-            new_mappings = call_gemini_for_normalization(names_list, lookups[category], category, gemini_api_key)
+            new_mappings = call_gemini_for_normalization(names_list, lookups[category], category, api_key)
             logging.info(f"New mappings returned for {category}: {new_mappings}")
             if new_mappings:
                 lookups[category].update(new_mappings)

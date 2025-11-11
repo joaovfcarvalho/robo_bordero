@@ -1,0 +1,99 @@
+# Render.com Configuration for CBF Robot
+# Deploy: Connect GitHub repo to Render as a Blueprint
+
+services:
+  # ==========================================================================
+  # Service 1: Dashboard (Streamlit Web Interface)
+  # ==========================================================================
+  - type: web
+    name: cbf-dashboard
+    runtime: python
+    region: oregon  # Choose: oregon, frankfurt, singapore
+    plan: free  # Options: free, starter ($7/mo), standard ($25/mo)
+
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run src/dashboard.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
+
+    healthCheckPath: /_stcore/health
+
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false  # Use anon key for dashboard
+      - key: PYTHON_VERSION
+        value: 3.11
+
+    # Auto-deploy on git push
+    autoDeploy: true
+
+  # ==========================================================================
+  # Service 2: Scheduled Worker (Cron Job)
+  # ==========================================================================
+  - type: cron
+    name: cbf-scraper-daily
+    runtime: python
+    schedule: "0 2 * * *"  # Every day at 2 AM UTC
+    region: oregon
+
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m src.cloud_worker
+
+    envVars:
+      - key: RUN_ONCE
+        value: "true"  # Run once per cron trigger
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false  # Use service role key for worker
+      - key: PYTHON_VERSION
+        value: 3.11
+      - key: CBF_COMPETITIONS
+        value: "142,424,242"  # Brasileiro A, Copa do Brasil, Brasileiro B
+
+# ==============================================================================
+# Deployment Instructions
+# ==============================================================================
+# 1. Push this file to your GitHub repo
+# 2. Go to Render.com and sign in
+# 3. Click "New" → "Blueprint"
+# 4. Connect your GitHub repo
+# 5. Render will detect this render.yaml and create both services
+# 6. Set the secret environment variables in Render dashboard:
+#    - ANTHROPIC_API_KEY
+#    - SUPABASE_URL
+#    - SUPABASE_KEY (for dashboard)
+#    - SUPABASE_SERVICE_KEY (for worker)
+# 7. Deploy!
+#
+# Costs (Render):
+# - Free tier:
+#   - Web service: 750 hours/month (enough for 1 service always-on)
+#   - Cron job: Free
+#   - Limitation: Services spin down after 15 min of inactivity (cold starts)
+# - Starter ($7/month):
+#   - Always-on service (no cold starts)
+#   - Faster builds
+# ==============================================================================
+
+# ==============================================================================
+# Alternative: Background Worker (Instead of Cron)
+# ==============================================================================
+# If you prefer a continuously running worker instead of cron:
+#
+# - type: worker
+#   name: cbf-worker-continuous
+#   runtime: python
+#   plan: starter  # Workers require paid plan
+#   region: oregon
+#
+#   buildCommand: pip install -r requirements.txt
+#   startCommand: python -m src.cloud_worker  # Runs continuously with schedule
+#
+#   envVars:
+#     # Same as cron, but WITHOUT RUN_ONCE
+# ==============================================================================

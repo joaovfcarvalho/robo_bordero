@@ -2,13 +2,53 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt # Added for custom chart sorting
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 st.set_page_config(layout="wide") # Moved to the top
 
 # Load data
 @st.cache_data
 def load_data():
-    data = pd.read_csv("csv/jogos_resumo_clean.csv") # Removed parse_dates from here
+    # Import database client
+    from src.database import get_database_client
+
+    try:
+        # Get data from Supabase
+        db = get_database_client()
+        matches = db.get_all_matches(limit=10000)  # Adjust limit as needed
+
+        # Convert to DataFrame
+        data = pd.DataFrame(matches)
+
+        # Map database columns to dashboard expected columns
+        # Database uses: receita_total, saldo
+        # Dashboard expects: receita_bruta_total, resultado_liquido
+        if 'receita_total' in data.columns:
+            data['receita_bruta_total'] = data['receita_total']
+        if 'saldo' in data.columns:
+            data['resultado_liquido'] = data['saldo']
+
+        # Use normalized names if available
+        if 'time_mandante_normalizado' in data.columns:
+            data['time_mandante'] = data['time_mandante_normalizado'].fillna(data.get('time_mandante', ''))
+        if 'time_visitante_normalizado' in data.columns:
+            data['time_visitante'] = data['time_visitante_normalizado'].fillna(data.get('time_visitante', ''))
+        if 'estadio_normalizado' in data.columns:
+            data['estadio'] = data['estadio_normalizado'].fillna(data.get('estadio', ''))
+
+    except Exception as e:
+        st.error(f"Erro ao carregar dados do Supabase: {e}")
+        st.info("Tentando carregar dados do CSV local como fallback...")
+
+        # Fallback to CSV if Supabase fails
+        try:
+            data = pd.read_csv("csv/jogos_resumo_clean.csv")
+        except FileNotFoundError:
+            st.error("Arquivo CSV também não encontrado. Verifique a configuração do Supabase.")
+            return pd.DataFrame()  # Return empty DataFrame
     
     # Explicitly convert 'data_jogo' to datetime, coercing errors to NaT
     data['data_jogo'] = pd.to_datetime(data['data_jogo'], errors='coerce')

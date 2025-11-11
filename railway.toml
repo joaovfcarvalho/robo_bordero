@@ -1,0 +1,84 @@
+# Railway.app Configuration for CBF Robot
+# Deploy: Connect GitHub repo to Railway and it will auto-detect this config
+
+# ============================================================================
+# Service 1: Dashboard (Streamlit Web Interface)
+# ============================================================================
+[[services]]
+name = "cbf-dashboard"
+source = "."
+
+[services.build]
+builder = "NIXPACKS"
+buildCommand = "pip install -r requirements.txt"
+
+[services.deploy]
+# Start Streamlit dashboard on Railway's assigned PORT
+startCommand = "streamlit run src/dashboard.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true"
+healthcheckPath = "/_stcore/health"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[services.regions]
+# Choose region closest to your Supabase instance
+# Options: us-west1, us-east4, eu-west1, ap-south1
+region = "us-west1"
+
+# ============================================================================
+# Service 2: Scheduled Worker (PDF Scraping & Processing)
+# ============================================================================
+[[services]]
+name = "cbf-worker"
+source = "."
+
+[services.build]
+builder = "NIXPACKS"
+buildCommand = "pip install -r requirements.txt"
+
+[services.deploy]
+# Run worker in RUN_ONCE mode (Railway cron will trigger it)
+startCommand = "python -m src.cloud_worker"
+restartPolicyType = "NEVER"  # Don't restart after completion
+
+# Cron schedule: Every day at 2 AM UTC
+# Configure this in Railway dashboard under the service settings
+# Cron expression: 0 2 * * *
+
+# Alternative: For continuous mode (always running with internal schedule)
+# startCommand = "python -m src.cloud_worker"
+# restartPolicyType = "ON_FAILURE"
+
+# ============================================================================
+# Environment Variables
+# ============================================================================
+# Set these in Railway dashboard under each service's Variables section:
+#
+# Required for both services:
+# - ANTHROPIC_API_KEY: Your Claude API key
+# - SUPABASE_URL: Your Supabase project URL
+# - SUPABASE_SERVICE_KEY: Supabase service role key (for worker)
+# - SUPABASE_KEY: Supabase anon key (for dashboard)
+#
+# Optional:
+# - CBF_COMPETITIONS: Comma-separated competition codes (default: "142,424,242")
+# - RUN_ONCE: Set to "true" for worker to run once and exit (for cron jobs)
+#
+# ============================================================================
+
+# ============================================================================
+# Deployment Notes
+# ============================================================================
+# 1. Connect this GitHub repo to Railway
+# 2. Railway will create two services based on this config
+# 3. Set environment variables for each service in Railway dashboard
+# 4. For the worker service, configure cron in Railway:
+#    - Go to service settings
+#    - Add cron trigger: 0 2 * * * (every day at 2 AM)
+# 5. Dashboard will be accessible at the generated Railway URL
+#
+# Estimated costs (Railway):
+# - Dashboard (always-on): ~$3-5/month
+# - Worker (1 hour/day): ~$1-2/month
+# - Total: ~$5-7/month (within $5 free tier initially)
+# ============================================================================
