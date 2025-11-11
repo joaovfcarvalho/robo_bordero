@@ -5,7 +5,7 @@
     "nixpacksConfigPath": "nixpacks.toml"
   },
   "deploy": {
-    "startCommand": "PYTHONPATH=/app:$PYTHONPATH streamlit run src/dashboard.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true",
+    "startCommand": "PYTHONPATH=/app:$PYTHONPATH /opt/venv/bin/streamlit run src/dashboard.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true",
     "healthcheckPath": "/_stcore/health",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",
