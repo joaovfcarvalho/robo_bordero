@@ -5,14 +5,15 @@ import altair as alt # Added for custom chart sorting
 from dotenv import load_dotenv
 import datetime
 from pathlib import Path
+import os
 
 # Load environment variables
 load_dotenv()
 
 st.set_page_config(layout="wide") # Moved to the top
 
-# Admin password (hardcoded for security)
-ADMIN_PASSWORD = "cbf2025admin"
+# Admin password from environment variable (for security)
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "cbf2025admin")
 
 # Load data
 @st.cache_data
@@ -308,6 +309,9 @@ else:
 
     # Admin operations
     st.sidebar.subheader("Operações Administrativas")
+
+    # WARNING: Railway has ephemeral filesystem - files created here won't persist across deploys
+    st.sidebar.warning("⚠️ **Aviso Railway**: Arquivos PDFs/CSVs gerados aqui são temporários e serão perdidos no próximo deploy. Use Supabase para persistência.")
 
     # Routine Running Option
     if st.sidebar.button("🚀 Executar Rotina Completa", help="Download de todos os borderôs restantes e processamento com LLM"):
