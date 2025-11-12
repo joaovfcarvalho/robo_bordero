@@ -75,29 +75,33 @@ https://your-app-name.up.railway.app
 
 For automated daily PDF scraping:
 
-### 1. Add New Service
+> **⚠️ IMPORTANT**: The worker service configuration is different from the web service. See **[RAILWAY_SCRAPER_SERVICE.md](./RAILWAY_SCRAPER_SERVICE.md)** for detailed setup instructions.
 
-1. In your Railway project, click "New Service"
-2. Select "GitHub Repo" and choose the same repository
-3. Railway will create a second service
+### Quick Setup
 
-### 2. Override Start Command
+1. **Create New Service**
+   - In Railway project, click "New Service"
+   - Select "GitHub Repo" and choose the same repository
+   - Name it: `cbf-scraper-daily`
 
-In the new service settings:
-- Go to "Settings" → "Deploy"
-- Set **Start Command**: `python -m src.cloud_worker`
-- This service doesn't need a public URL
+2. **Override Start Command** (CRITICAL)
+   - Go to "Settings" → "Deploy"
+   - Set **Start Command**: `python -m src.cloud_worker`
+   - **DO NOT** use the uvicorn command (that's for web service only)
 
-### 3. Set Environment Variables
+3. **Disable/Remove Healthcheck**
+   - Worker service doesn't serve HTTP traffic
+   - Set healthcheck path to empty or none
 
-Add the same environment variables as the main service, plus:
-```
-RUN_ONCE=false
-```
+4. **Set Environment Variables**
+   - Add same variables as main service
+   - Plus: `RUN_ONCE=false` for continuous scheduling
 
-### 4. Deploy
+5. **Deploy**
+   - Worker runs continuously
+   - Executes scraping jobs daily at 2 AM UTC
 
-The worker will run continuously and execute scraping jobs daily at 2 AM UTC.
+For troubleshooting and detailed configuration, see **[RAILWAY_SCRAPER_SERVICE.md](./RAILWAY_SCRAPER_SERVICE.md)**.
 
 ## Configuration Files
 
