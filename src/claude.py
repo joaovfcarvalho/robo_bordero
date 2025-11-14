@@ -98,14 +98,37 @@ Analise este borderô e extraia as seguintes informações em formato JSON.
 
 **ATENÇÃO ESPECIAL - DESAFIOS CONHECIDOS:**
 
-1. **Nomes de Times**: Os times aparecem com diferentes formatos e precisam ser normalizados:
+1. **Nomes de Times - NORMALIZAÇÃO CONSCIENTE DE CONTEXTO**: Os times aparecem com diferentes formatos e precisam ser normalizados usando CONTEXTO da partida:
+
+   **REGRAS DE DESAMBIGUAÇÃO OBRIGATÓRIAS:**
+   - Use COMPETIÇÃO + ESTÁDIO + ADVERSÁRIO para identificar o time correto
+   - NUNCA confie apenas no sufixo "SAF" ou nome do time
+
+   **EXEMPLOS CRÍTICOS:**
+
+   a) **Botafogo SAF/RJ vs Botafogo SP**:
+      - Se a competição é SÉRIE A ou LIBERTADORES e o estádio está no RJ (Nilton Santos, Maracanã): → "Botafogo-RJ"
+      - Se a competição é SÉRIE B ou SÉRIE C e o estádio está em SP (Ribeirão Preto, Araraquara): → "Botafogo-SP"
+      - Se o adversário é time da Série A (Flamengo, Palmeiras): provavelmente → "Botafogo-RJ"
+      - Se o adversário é time da Série B (Vila Nova, Avaí): provavelmente → "Botafogo-SP"
+
+   b) **Nacional AM vs Nacional SP**:
+      - Se estádio está em Manaus (Arena da Amazônia): → "Nacional-AM"
+      - Se estádio está em São Paulo: → "Nacional-SP"
+
+   c) **América-MG, América-RJ, América-RN**:
+      - Arena Independência (Belo Horizonte): → "América-MG"
+      - São Januário (Rio de Janeiro): → "América-RJ"
+      - Machadão (Natal): → "América-RN"
+
+   **REGRAS GERAIS:**
    - "SANTOS FUTEBOL CLUBE - SP" → normalizar para "Santos"
    - "CLUBE DE REGATAS DO FLAMENGO - RJ" → normalizar para "Flamengo"
    - "SÃO PAULO FUTEBOL CLUBE - SP" → normalizar para "São Paulo"
    - "SPORT CLUB CORINTHIANS PAULISTA - SP" → normalizar para "Corinthians"
    - Remova sufixos como "FC", "SAF", "S/A", "FUTEBOL CLUBE", "CLUB", etc.
    - Use o nome popular/comum do time
-   - Mantenha estado apenas se necessário para desambiguação (ex: "Botafogo-RJ" vs "Botafogo-PB")
+   - Mantenha estado SEMPRE que houver ambiguidade possível (ex: "Botafogo-RJ" vs "Botafogo-SP")
 
 2. **Estádios**: Normalize os nomes dos estádios:
    - "ESTÁDIO MORUMBI - SÃO PAULO - SP" → normalizar para "Morumbi"

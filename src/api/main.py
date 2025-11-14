@@ -29,11 +29,14 @@ app = FastAPI(
 )
 
 # Configure CORS
-# For Railway, allow all origins in development, specific in production
+# Allow Vercel frontend and development origins
 cors_origins = os.getenv("CORS_ORIGINS", "*")
 if cors_origins == "*":
+    # Development mode - allow all origins
     origins = ["*"]
 else:
+    # Production mode - parse comma-separated origins
+    # Example: https://your-frontend.vercel.app,https://www.your-domain.com
     origins = [origin.strip() for origin in cors_origins.split(",")]
 
 app.add_middleware(
