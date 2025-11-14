@@ -15,8 +15,9 @@ import type {
 } from '../types'
 
 // Base API client
+// For Vercel deployment, use VITE_API_URL environment variable to point to Railway backend
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },

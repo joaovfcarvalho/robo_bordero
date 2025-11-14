@@ -1,15 +1,8 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { BarChart3, FileText, LogOut } from 'lucide-react'
-import { isAuthenticated, clearAuthToken } from '../api/client'
+import { BarChart3, Upload } from 'lucide-react'
 
 export default function Layout() {
   const location = useLocation()
-  const isAuth = isAuthenticated()
-
-  const handleLogout = () => {
-    clearAuthToken()
-    window.location.href = '/'
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -27,45 +20,25 @@ export default function Layout() {
                   to="/"
                   className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
                     location.pathname === '/'
-                      ? 'border-primary-500 text-gray-900'
+                      ? 'border-indigo-500 text-gray-900'
                       : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
                   }`}
                 >
                   <BarChart3 className="w-4 h-4 mr-2" />
-                  Analytics
+                  Dashboard
                 </Link>
-                {isAuth && (
-                  <Link
-                    to="/pdfs"
-                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                      location.pathname === '/pdfs'
-                        ? 'border-primary-500 text-gray-900'
-                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                    }`}
-                  >
-                    <FileText className="w-4 h-4 mr-2" />
-                    PDF Manager
-                  </Link>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center">
-              {isAuth ? (
-                <button
-                  onClick={handleLogout}
-                  className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
-                >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Logout
-                </button>
-              ) : (
                 <Link
-                  to="/admin/login"
-                  className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                  to="/upload"
+                  className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                    location.pathname === '/upload'
+                      ? 'border-indigo-500 text-gray-900'
+                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                  }`}
                 >
-                  Admin Login
+                  <Upload className="w-4 h-4 mr-2" />
+                  Analisar PDF
                 </Link>
-              )}
+              </div>
             </div>
           </div>
         </div>
